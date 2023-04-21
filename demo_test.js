@@ -7,6 +7,8 @@ var maxX = 0;
 var maxY = 0;
 var mapData = new Array();
 
+//TODO: Substitute setTimeout with a promise or something similar if possible
+
 await client.onTile((x, y, delivery) => {
     //Update the max coordiantes of the map to know its size
     if (x > maxX) {
@@ -24,6 +26,7 @@ await client.onTile((x, y, delivery) => {
 setTimeout(() => {
     //Create the map and the varaible k used to iterate the mapData array
     var map = new Array(maxX);
+    //Iterator for the mapData array
     var k = 0;
 
     for (var i = 0; i <= maxX; i++) {
