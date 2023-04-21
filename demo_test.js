@@ -103,7 +103,7 @@ async function move(direction) {
     await client.move(direction);
 }
 
-// Method for checking boundaries
+// Method for checking boundariess
 function isSafe(i, j) {
     if (i >= 0 && i < map.length && j >= 0 && j < map[0].length)
         return true;
