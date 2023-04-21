@@ -1,8 +1,8 @@
 const config = {
 
-    host: "http://10.196.22.185:8080/?name=Crab",
+    host: "http://localhost:8080/?name=Cannarsi",
 
-    token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjJmMjE1OTU1YTk4IiwibmFtZSI6IkNyYWIiLCJpYXQiOjE2ODA2ODE2ODZ9.GGjByONkw5YPXF3D9dNfY7xPjSE588xNVZfwq2ZqNUY'
+    token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImEyOGQ0NTYwYThhIiwibmFtZSI6IkNhbm5hcnNpIiwiaWF0IjoxNjgwNjg1ODQ5fQ.ISpSA1UwNeJxal3NUWR-53DIA4_hdl24hxjyarYTjz0'
 
 }
 
