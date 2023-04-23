@@ -236,10 +236,6 @@ setTimeout(() => {
     let eucTime = 0;
     let diaTime = 0;
     let cheTime = 0;
-    let manWins = 0;
-    let eucWins = 0;
-    let diaWins = 0;
-    let cheWins = 0;
 
     for (var i = 0; i < 20; i++) {
         startX = Math.floor(Math.random() * maxX);
@@ -276,24 +272,6 @@ setTimeout(() => {
         cheTime = Date.now() -start;
         console.log("Time taken by chebyshev: " + cheTime + "ms");
 
-        
-        //check the one with the lowest time and add a win to it
-        let lowest = Math.min(manTime, eucTime, diaTime, cheTime);
-        if (lowest == manTime) {
-            manWins++;
-        } else if (lowest == eucTime) {
-            eucWins++;
-        } else if (lowest == diaTime) {
-            diaWins++;
-        } else if (lowest == cheTime) {
-            cheWins++;
-        }
-
         console.log("----------------------- end of: " + i + " cycle --------------------------");
     }
-    console.log("---------------------------------------------------------------------------");
-    console.log("Manhattan wins: " + manWins);
-    console.log("Euclidean wins: " + eucWins);
-    console.log("Diagonal wins: " + diaWins);
-    console.log("Chebyshev wins: " + cheWins);
 }, 500);
