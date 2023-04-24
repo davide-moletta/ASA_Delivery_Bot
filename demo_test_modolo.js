@@ -24,10 +24,7 @@ client.onTile((x, y, delivery) => {
     //console.log(x, y, delivery);
     if(delivery == "true")
         deliveryPoints.add([x,y])
-});
-
-setTimeout(() => {
-    // create a matrix maxX x maxY and fill with 0 
+}).then(() => {
     mapData = new Array(maxX+1).fill(0).map(() => new Array(maxY+1).fill(0));
     console.log("Map size: " + maxX + "x" + maxY);
     points.forEach((point) => {
@@ -43,7 +40,9 @@ setTimeout(() => {
     deliveryPoints.forEach((point) => {
         mapData[point[0]][point[1]] = 2;
     });
-}, 2000);
+}
+
+);
 
 async function moveAction(direction){
     await client.move(direction)
