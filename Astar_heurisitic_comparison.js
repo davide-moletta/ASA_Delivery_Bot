@@ -17,6 +17,21 @@ var deliveryPoints = new Set();
 
 var mapData;
 
+//Request to the server every tile present in the map
+client.onTile((x, y, delivery) => {
+    //Update the max coordiantes of the map to know its size
+    maxX = x > maxX ? x : maxX;
+    maxY = y > maxY ? y : maxY;
+
+    //Push every tile in the mapData array
+    points.add([x, y])
+    if (delivery)
+        deliveryPoints.add([x, y])
+});
+
+
+
+
 let cols = 0; //columns in the grid
 let rows = 0; //rows in the grid
 
@@ -30,27 +45,36 @@ let end; // ending grid point (goal)
 let path = [];
 let movemements = [];
 
-//Request to the server every tile present in the map
-client.onTile((x, y, delivery) => {
-    //Update the max coordiantes of the map to know its size
-    maxX = x > maxX ? x : maxX;
-    maxY = y > maxY ? y : maxY;
-
-    //Push every tile in the mapData array
-    points.add([x, y])
-    if (delivery)
-        deliveryPoints.add([x, y])
-});
-
-//Manhattan distance
-function heuristic(position0, position1) {
+function manhattanHeuristic(position0, position1) {
     let d1 = Math.abs(position1.x - position0.x);
     let d2 = Math.abs(position1.y - position0.y);
 
     return d1 + d2;
 }
 
-//constructor function to create all the grid points as objects containing the data for the points
+//Best from the tests
+function euclideanHeuristic(position0, position1) {
+    let d1 = Math.abs(position1.x - position0.x);
+    let d2 = Math.abs(position1.y - position0.y);
+
+    return Math.sqrt(d1 * d1 + d2 * d2);
+}
+
+function chebyshevHeuristic(position0, position1) {
+    let d1 = Math.abs(position1.x - position0.x);
+    let d2 = Math.abs(position1.y - position0.y);
+
+    return Math.max(d1, d2);
+}
+
+function diagonalHeuristic(position0, position1) {
+    let d1 = Math.abs(position1.x - position0.x);
+    let d2 = Math.abs(position1.y - position0.y);
+
+    return Math.max(d1, d2) + (Math.SQRT2 - 2) * Math.min(d1, d2);
+}
+
+//constructor function to create all the grid points as objects containind the data for the points
 function GridPoint(x, y) {
     this.x = x; //x location of the grid point
     this.y = y; //y location of the grid point
@@ -112,13 +136,15 @@ function init(currentX, currentY, targetX, targetY) {
 
 //A star search implementation
 
-function search(currentX, currentY, targetX, targetY) {
+function search(currentX, currentY, targetX, targetY, heuristic) {
     cols = maxX + 1;
     rows = maxY + 1;
     grid = new Array(cols);
-
+    path = [];
+    movemements = [];
 
     init(currentX, currentY, targetX, targetY);
+
     while (openSet.length > 0) {
         //assumption lowest index is the first one to begin with
         let lowestIndex = 0;
@@ -165,27 +191,25 @@ function search(currentX, currentY, targetX, targetY) {
                 }
 
                 neighbor.g = possibleG;
-                neighbor.h = heuristic(neighbor, end);
+
+                if (heuristic == "manhattan") {
+                    neighbor.h = manhattanHeuristic(neighbor, end);
+                } else if (heuristic == "euclidean") {
+                    neighbor.h = euclideanHeuristic(neighbor, end);
+                } else if (heuristic == "diagonal") {
+                    neighbor.h = diagonalHeuristic(neighbor, end);
+                } else if (heuristic == "chebyshev") {
+                    neighbor.h = chebyshevHeuristic(neighbor, end);
+                }
                 neighbor.f = neighbor.g + neighbor.h;
                 neighbor.parent = current;
                 neighbor.movement = movement;
-
             }
         }
     }
+
+    //no solution by default
     return [];
-}
-
-//Da rivedere ma così funziona, tocca capire come funzionano bene le robe asincrone
-async function moveToTarget(movemements) {
-    var movemementsDone = [movemements.length];
-
-    movemementsDone[0] = await client.move(movemements[0]);
-    for (var i = 1; i < movemements.length; i++) {
-        if (movemementsDone[i - 1]) {
-            movemementsDone[i] = await client.move(movemements[i]);
-        }
-    }
 }
 
 setTimeout(() => {
@@ -201,123 +225,53 @@ setTimeout(() => {
         mapData[point[0]][point[1]] = 2;
     });
 
-    //console.log(mapData);
-    //console.log("A*: " + path);
-    //moveToTarget(search(0, 2, 6, 7));
 
-}, 100);
+    //Generate random start and end points 
+    let start = 0;
+    let startX = 0;
+    let startY = 0;
+    let endX = 0;
+    let endY = 0;
+    let manTime = 0;
+    let eucTime = 0;
+    let diaTime = 0;
+    let cheTime = 0;
 
+    for (var i = 0; i < 20; i++) {
+        startX = Math.floor(Math.random() * maxX);
+        startY = Math.floor(Math.random() * maxY);
+        endX = Math.floor(Math.random() * maxX);
+        endY = Math.floor(Math.random() * maxY);
 
-//TODO fix the fact that the agent follow both the path and the right-left rule
-async function agentLoop() {
-
-    while (true) {
-        var myYou = {};
-        var myParcels = [];
-
-        if (await client.move("right")) {
-            await client.pickup();
-            await client.move("left");
-            await client.pickup();
-
+        while (mapData[startX][startY] == 0 || mapData[endX][endY] == 0) {
+            startX = Math.floor(Math.random() * maxX);
+            startY = Math.floor(Math.random() * maxY);
+            endX = Math.floor(Math.random() * maxX);
+            endY = Math.floor(Math.random() * maxY);
         }
 
-        //Gets coordinates of the agent from the server
-        client.onYou(you => {
-            //Rounding to avoid .6 and .4 coordinates (.6 -> moving in the next integer, .4 -> moving in the previous integer)
-            you.x = Math.round(you.x);
-            you.y = Math.round(you.y);
-            myYou = you
+        console.log("From: " + startX + " - " + startY + " To: " + endX + " - " + endY);
 
-        });
-        console.log(myYou);
-        client.onParcelsSensing((parcels) => {
-            //Add the parcels carried by the agent to the myParcels array
-            for (let parcel of parcels) {
-                if (parcel.carriedBy == myYou.id && !(parcel in myParcels)) {
-                    myParcels.push(parcel);
-                }
-            }
-        });
+        start = Date.now();
+        console.log("A* with manhattan heuristic: " + search(startX, startY, endX, endY, "manhattan"));
+        manTime = Date.now() -start;
+        console.log("Time taken by manhattan: " + manTime + "ms");
 
-        console.log(myParcels);
-        if (myParcels.length != 0) {
-            moveToTarget(search(myYou.x, myYou.y, 9, 2));
-            await client.putdown();
-        }
+        start = Date.now();
+        console.log("A* with euclidean heuristic: " + search(startX, startY, endX, endY, "euclidean"));
+        eucTime = Date.now() -start;
+        console.log("Time taken by euclidean: " + eucTime + "ms");
+
+        start = Date.now();
+        console.log("A* with diagonal heuristic: " + search(startX, startY, endX, endY, "diagonal"));
+        diaTime = Date.now() -start;
+        console.log("Time taken by diagonal: " + diaTime + "ms");
+
+        start = Date.now();
+        console.log("A* with chebyshev heuristic: " + search(startX, startY, endX, endY, "chebyshev"));
+        cheTime = Date.now() -start;
+        console.log("Time taken by chebyshev: " + cheTime + "ms");
+
+        console.log("----------------------- end of: " + i + " cycle --------------------------");
     }
-}
-
-agentLoop()
-
-/*async function agentLoop() {
-
-    // get random previous direction
-    var previous = ['up', 'right', 'down', 'left'][Math.floor(Math.random() * 4)];
-
-    while (true) {
-        let tried = [];
-        var myYou = {};
-        var myParcels = [];
-
-        await client.pickup();
-
-        while (tried.length < 4) {
-
-            let current = { up: 'down', right: 'left', down: 'up', left: 'right' }[previous] // backward
-
-            if (tried.length < 3) { // try ahaed or turn (before going backward)
-                current = ['up', 'right', 'down', 'left'].filter(d => d != current)[Math.floor(Math.random() * 3)];
-            }
-
-            if (!tried.includes(current)) {
-                if (await client.move(current)) {
-
-                    //Gets coordinates of the agent from the server
-                    client.onYou(you => {
-                        //Rounding to avoid .6 and .4 coordinates (.6 -> moving in the next integer, .4 -> moving in the previous integer)
-                        you.x = Math.round(you.x);
-                        you.y = Math.round(you.y);
-                        myYou = you
-                    });
-
-                    console.log(myYou.x, myYou.y);
-
-                    //Gets the parcels sensed by the agent
-                    client.onParcelsSensing((parcels) => {
-                        //Add the parcels carried by the agent to the myParcels array
-                        for (let parcel of parcels) {
-                            if (parcel.carriedBy != null && parcel.carriedBy == myYou.id && !(parcel in myParcels)) {
-                                myParcels.push(parcel);
-                            }
-                        }
-                    });
-
-                    //If the agent is carrying a parcel, go to the nearest delivery point
-                    if (myParcels.length != 0) {
-                        console.log("I'm carrying a parcel");
-
-                        findDelivery(myYou);
-                    }
-
-                    //if the agent is on the border of the map, put down the parcel
-                    if (myYou.x == 0 || myYou.x == maxX || myYou.y == 0 || myYou.y == maxY) {
-                        await client.putdown();
-                    }
-
-                    previous = current;
-                    break;
-                }
-
-                tried.push(current);
-            }
-
-        }
-
-        if (tried.length == 4) {
-            console.log('stucked');
-            await client.timer(1000); // stucked, wait 1 sec and retry
-        }
-    }
-}
- */
+}, 500);
