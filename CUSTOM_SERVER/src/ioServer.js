@@ -28,23 +28,39 @@ io.on('connection', (socket) => {
     if ( !me ) return;
     socket.broadcast.emit( 'hi ', socket.id, me.id, me.name );
 
-    
+
 
     /**
-     * Emit config
+     * Config
      */
-    socket.emit( 'config', config )
+    if ( me.name == 'god' ) { // 'god' mod
+        me.config.PARCELS_OBSERVATION_DISTANCE = 'infinite'
+        me.config.AGENTS_OBSERVATION_DISTANCE = 'infinite'
+    }
+    socket.emit( 'config', me.config )
 
     
 
     /**
      * Emit map (tiles)
      */
-    for (const tile of myGrid.getTiles()) {
-        // console.log(tile)
-        if ( !tile.blocked ) 
-            socket.emit( 'tile', tile.x, tile.y, tile.delivery )
+    myGrid.on( 'tile', ({x, y, delivery, blocked}) => {
+        // console.log( 'emit tile', x, y, delivery );
+        if (!blocked)
+            socket.emit( 'tile', x, y, delivery );
+        else
+            socket.emit( 'not_tile', x, y );
+    } );
+    let tiles = []
+    for (const {x, y, delivery, blocked} of myGrid.getTiles()) {
+        if ( !blocked ) {
+            socket.emit( 'tile', x, y, delivery )
+            tiles.push( {x, y, delivery} )
+        } else
+            socket.emit( 'not_tile', x, y );
     }
+    let {width, height} = myGrid.getMapSize()
+    socket.emit( 'map', width, height, tiles )
     
 
     
@@ -174,6 +190,43 @@ io.on('connection', (socket) => {
         socket.broadcast.emit( 'log', {src: 'client', timestamp: myClock.ms, socket: socket.id, id: me.id, name: me.name}, ...message )
     } )
 
+
+
+    /**
+     * GOD mod
+     */
+    if ( me.name == 'god' ) {
+
+        socket.on( 'create parcel', async (x, y) => {
+            console.log( 'create parcel', x, y )
+            myGrid.createParcel(x, y)
+        } );
+
+        socket.on( 'dispose parcel', async (x, y) => {
+            console.log( 'dispose parcel', x, y )
+            let parcels = Array.from(myGrid.getParcels()).filter( p => p.x == x && p.y == y );
+            for ( p of parcels)
+                myGrid.deleteParcel( p.id )
+            myGrid.emit( 'parcel' );
+        } );
+
+        socket.on( 'tile', async (x, y) => {
+            console.log( 'create/dispose tile', x, y )
+            let tile = myGrid.getTile(x, y)
+            
+            if ( !tile ) return;
+
+            if ( tile.blocked ) {
+                tile.delivery = false;
+                tile.unblock();
+            } else if ( !tile.delivery ) {
+                tile.delivery = true;
+            } else {
+                tile.block();
+            }
+        } );
+
+    }
 
 });
 

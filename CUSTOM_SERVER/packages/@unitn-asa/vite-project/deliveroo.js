@@ -1,18 +1,18 @@
-// import * as io from 'socket.io';
+import { default as io } from 'socket.io-client';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { DragControls } from 'three/addons/controls/DragControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { Vector3 } from 'three';
-import { EventEmitter } from 'EventEmitter3';
+import { default as EventEmitter } from 'events';
 
 
 const scene = new THREE.Scene();
 
 // const camera = new THREE.OrthographicCamera( -100, 100, 10, -10, 1, 100 );
-const camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 100 );
-camera.position.set(-2, 10, +10);
+const camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 300 );
+camera.position.set(-1, 2, +2);
 
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize( window.innerWidth, window.innerHeight );
@@ -32,12 +32,14 @@ window.addEventListener("resize", () => {
 } );
 
 const controls = new OrbitControls( camera, labelRenderer.domElement );
-controls.minDistance = 15;
-controls.maxDistance = 40;
+controls.minDistance = 10;
+controls.maxDistance = 100;
 controls.maxAzimuthAngle = Math.PI/10;
 controls.minAzimuthAngle = -Math.PI/6;
 controls.maxPolarAngle = Math.PI/2.2;
 controls.minPolarAngle = 0;
+controls.listenToKeyEvents( window );
+controls.screenSpacePanning = false;
 controls.target.set(0, 0, 0);
 controls.update();
 
@@ -89,6 +91,7 @@ labelRenderer.domElement.addEventListener( 'click', ( event ) => {
 const camTarget = new Vector3(0,0,0);
 
 const animator = new EventEmitter();
+animator.setMaxListeners(1000);
 
 function animate() {
     
@@ -581,7 +584,7 @@ if ( !name ) {
 var token = checkCookieForToken( name )
 
 // Connect
-var socket = io( {
+var socket = io( import.meta.env.VITE_SOCKET_IO_HOST || '', {
     extraHeaders: {
         'x-token': token
     },
@@ -589,6 +592,7 @@ var socket = io( {
         name: params.get("name"),
     }
 } );
+
 
 var me = getOrCreateAgent('loading', name, 0, 0, 0);
 // me.mesh.add( camera );
@@ -684,8 +688,8 @@ socket.on( "you", ( {id, name, x, y, score} ) => {
         for ( var tile of tiles.values() ) {
             var distance = Math.abs(x-tile.x) + Math.abs(y-tile.y);
             let opacity = 0.1;
-            if ( distance < PARCELS_OBSERVATION_DISTANCE ) opacity += 0.2;
-            if ( distance < AGENTS_OBSERVATION_DISTANCE ) opacity += 0.2;
+            if ( !( distance >= PARCELS_OBSERVATION_DISTANCE ) ) opacity += 0.2;
+            if ( !( distance >= AGENTS_OBSERVATION_DISTANCE ) ) opacity += 0.2;
             tile.opacity = ( opacity > 0.4 ? 1 : opacity );
         }
     } else { // when moving
@@ -768,56 +772,99 @@ socket.on("parcels sensing", (sensed) => {
 
 });
 
+var action = null;
+async function start_doing ( ) {
+    while ( action ) {
+        let res = await action();
+        // if failed stop doing until keyup reset the action
+        if ( ! res )
+            break;
+    }
+}
+
+document.onkeyup = function(evt) {
+    action = null;
+}
 document.onkeydown = function(evt) {
-    evt = evt || window.event;
-    var charCode = evt.keyCode || evt.which;
-    // var charStr = String.fromCharCode(charCode);
-    // alert(charStr);
-    switch (charCode) {
-        case 81:// Q pickup
-        // console.log('emit pickup');
-        socket.emit('pickup', (picked) => {
-            // console.log( 'pickup', picked, 'parcels' );
-            // for ( let p of picked ) {
-            //     parcels.get( p.id ).pickup(me);
-            // }
-        } );
-        break;
-        case 69:// E putdown
-        // console.log('emit putdown');
-        socket.emit('putdown', null, (dropped) => {
-            // console.log( 'putdown', dropped, 'parcels' );
-            // for ( let p of dropped ) {
-            //     parcels.get( p.id ).putdown();
-            // }
-        } );
-        break;
-        case 87 || 38:// W up
-        // console.log('emit move up');
-        socket.emit('move', 'up', (status) => {
-            // console.log( (status ? 'move up done' : 'move up failed') );
-        } );
-        break;
-        case 65 || 37:// A left
-        // console.log('emit move left');
-        socket.emit('move', 'left', (status) => {
-            // console.log( (status ? 'move left done' : 'move left failed') );
-        } );
-        break;
-        case 83 || 40:// S down 
-        // console.log('emit move down');
-        socket.emit('move', 'down', (status) => {
-            // console.log( (status ? 'move down done' : 'move down failed') );
-        } );
-        break;
-        case 68 || 39:// D right
-        // console.log('emit move right');
-        socket.emit('move', 'right', (status) => {
-            // console.log( (status ? 'move right done' : 'move right failed') );
-        } );
-        break;
+    if ( action == null) {
+        // do the rest of this function and then call start_doing
+        setTimeout( start_doing );
+    }
+    switch (evt.code) {
+        case 'KeyQ':// Q pickup
+            action = () => {
+                return new Promise( (res) => {
+                    // console.log('emit pickup');
+                    socket.emit('pickup', (picked) => {
+                        // console.log( 'pickup', picked, 'parcels' );
+                        // for ( let p of picked ) {
+                        //     parcels.get( p.id ).pickup(me);
+                        // }
+                        res(picked.length>0);
+                    } );
+                } );
+            };
+            break;
+        case 'KeyE':// E putdown
+            action = () => {
+                return new Promise( (res) => {
+                    // console.log('emit putdown');
+                    socket.emit('putdown', null, (dropped) => {
+                        // console.log( 'putdown', dropped, 'parcels' );
+                        // for ( let p of dropped ) {
+                        //     parcels.get( p.id ).putdown();
+                        // }
+                        res(dropped.length>0);
+                    } );
+                } );
+            };
+            break;
+        case 'KeyW':// W up
+            action = () => {
+                return new Promise( (res, rej) => {
+                    // console.log('emit move up');
+                    socket.emit('move', 'up', (status) => {
+                        // console.log( (status ? 'move up done' : 'move up failed') );
+                        res(status);
+                    } );
+                } );
+            };
+            break;
+        case 'KeyA':// A left
+            action = () => {
+                return new Promise( (res, rej) => {
+                    // console.log('emit move left');
+                    socket.emit('move', 'left', (status) => {
+                        // console.log( (status ? 'move left done' : 'move left failed') );
+                        res(status);
+                    } );
+                } );
+            };
+            break;
+        case 'KeyS':// S down 
+            action = () => {
+                return new Promise( (res, rej) => {
+                    // console.log('emit move down');
+                    socket.emit('move', 'down', (status) => {
+                        // console.log( (status ? 'move down done' : 'move down failed') );
+                        res(status);
+                    } );
+                } );
+            };
+            break;
+        case 'KeyD':// D right
+            action = () => {
+                return new Promise( (res, rej) => {
+                    // console.log('emit move right');
+                    socket.emit('move', 'right', (status) => {
+                        // console.log( (status ? 'move right done' : 'move right failed') );
+                        res(status);
+                    } );
+                } );
+            };
+            break;
         default:
-        break;
+            break;
     }
 };
 
