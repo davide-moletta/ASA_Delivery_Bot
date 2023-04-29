@@ -7,15 +7,15 @@ const client = new DeliverooApi(config.host, config.token)
 //1 are walkable tiles
 //2 are delivery tiles
 
+// max coordinates of the map
 var maxX = 0;
 var maxY = 0;
 
-// set of points
-var points = new Set();
-// dictionary of deliery points with key = point and value = delivery
-var deliveryPoints = new Set();
+var points = new Set(); // set of points
 
-var mapData;
+var deliveryPoints = new Set(); // dictionary of deliery points with key = point and value = delivery
+
+var mapData; // the map as a 2D array
 
 let cols = 0; //columns in the grid
 let rows = 0; //rows in the grid
@@ -27,19 +27,24 @@ let closedSet = []; //array containing completely evaluated grid points
 
 let start; //starting grid point
 let end; // ending grid point (goal)
-let path = [];
-let movemements = [];
+let path = []; // array containing the path from the start to the end for Astar
+let movemements = []; // array containing the movements to follow the path of Astar
 
-//Request to the server every tile present in the map
-client.onTile((x, y, delivery) => {
-    //Update the max coordiantes of the map to know its size
-    maxX = x > maxX ? x : maxX;
-    maxY = y > maxY ? y : maxY;
+client.onConfig((config) => {
+    console.log(config);
+});
 
-    //Push every tile in the mapData array
-    points.add([x, y])
-    if (delivery)
-        deliveryPoints.add([x, y])
+client.onMap((width, height, tiles) => {
+    maxX = width;
+    maxY = height;
+
+    mapData = new Array(maxX).fill(0).map(() => new Array(maxY).fill(0));
+
+    tiles.forEach((tile) => {
+        mapData[tile.x][tile.y] = tile.delivery ? 2 : 1;
+    });
+
+    console.log(mapData);
 });
 
 //Manhattan distance
@@ -188,136 +193,31 @@ async function moveToTarget(movemements) {
     }
 }
 
-setTimeout(() => {
-    // create a matrix maxX x maxY and fill with 0 
-    mapData = new Array(maxX + 1).fill(0).map(() => new Array(maxY + 1).fill(0));
-
-    points.forEach((point) => {
-        mapData[point[0]][point[1]] = 1;
-    });
-
-    // if a point is in deliveryPoints set it to 2
-    deliveryPoints.forEach((point) => {
-        mapData[point[0]][point[1]] = 2;
-    });
-
-    //console.log(mapData);
-    //console.log("A*: " + path);
-    //moveToTarget(search(0, 2, 6, 7));
-
-}, 100);
-
-
+//TODO try map instead of array for parcels (lecture  of lab)
 //TODO fix the fact that the agent follow both the path and the right-left rule
 async function agentLoop() {
 
+    await client.move("down");
+    
     while (true) {
-        var myYou = {};
-        var myParcels = [];
-
-        if (await client.move("right")) {
-            await client.pickup();
-            await client.move("left");
-            await client.pickup();
-
-        }
+        var me = {};
+        var myParcels = new Map();
 
         //Gets coordinates of the agent from the server
         client.onYou(you => {
             //Rounding to avoid .6 and .4 coordinates (.6 -> moving in the next integer, .4 -> moving in the previous integer)
             you.x = Math.round(you.x);
             you.y = Math.round(you.y);
-            myYou = you
-
+            me = you;
         });
-        console.log(myYou);
-        client.onParcelsSensing((parcels) => {
+
+        client.onParcelsSensing(async (parcels) => {
             //Add the parcels carried by the agent to the myParcels array
-            for (let parcel of parcels) {
-                if (parcel.carriedBy == myYou.id && !(parcel in myParcels)) {
-                    myParcels.push(parcel);
-                }
+            for (const parcel of parcels) {
+                myParcels.set(parcel.id, parcel);
             }
         });
-
-        console.log(myParcels);
-        if (myParcels.length != 0) {
-            moveToTarget(search(myYou.x, myYou.y, 9, 2));
-            await client.putdown();
-        }
     }
 }
 
-agentLoop()
-
-/*async function agentLoop() {
-
-    // get random previous direction
-    var previous = ['up', 'right', 'down', 'left'][Math.floor(Math.random() * 4)];
-
-    while (true) {
-        let tried = [];
-        var myYou = {};
-        var myParcels = [];
-
-        await client.pickup();
-
-        while (tried.length < 4) {
-
-            let current = { up: 'down', right: 'left', down: 'up', left: 'right' }[previous] // backward
-
-            if (tried.length < 3) { // try ahaed or turn (before going backward)
-                current = ['up', 'right', 'down', 'left'].filter(d => d != current)[Math.floor(Math.random() * 3)];
-            }
-
-            if (!tried.includes(current)) {
-                if (await client.move(current)) {
-
-                    //Gets coordinates of the agent from the server
-                    client.onYou(you => {
-                        //Rounding to avoid .6 and .4 coordinates (.6 -> moving in the next integer, .4 -> moving in the previous integer)
-                        you.x = Math.round(you.x);
-                        you.y = Math.round(you.y);
-                        myYou = you
-                    });
-
-                    console.log(myYou.x, myYou.y);
-
-                    //Gets the parcels sensed by the agent
-                    client.onParcelsSensing((parcels) => {
-                        //Add the parcels carried by the agent to the myParcels array
-                        for (let parcel of parcels) {
-                            if (parcel.carriedBy != null && parcel.carriedBy == myYou.id && !(parcel in myParcels)) {
-                                myParcels.push(parcel);
-                            }
-                        }
-                    });
-
-                    //If the agent is carrying a parcel, go to the nearest delivery point
-                    if (myParcels.length != 0) {
-                        console.log("I'm carrying a parcel");
-
-                        findDelivery(myYou);
-                    }
-
-                    //if the agent is on the border of the map, put down the parcel
-                    if (myYou.x == 0 || myYou.x == maxX || myYou.y == 0 || myYou.y == maxY) {
-                        await client.putdown();
-                    }
-
-                    previous = current;
-                    break;
-                }
-
-                tried.push(current);
-            }
-
-        }
-
-        if (tried.length == 4) {
-            console.log('stucked');
-            await client.timer(1000); // stucked, wait 1 sec and retry
-        }
-    }
-}
- */
+agentLoop() 
