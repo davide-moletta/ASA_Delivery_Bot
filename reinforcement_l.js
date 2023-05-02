@@ -49,52 +49,59 @@ class QLearningAgent {
 
   async act(parcels) {
     // Get the current state
-    var you = {};
+    var a = {};
+    // TODO it gives undefined
     client.onYou(you => {
-        you.x = Math.round(you.x);
-        you.y = Math.round(you.y);
+        a.x = Math.round(you.x);
+        a.y = Math.round(you.y);
     });
+    console.log("you " + a.x + " " + a.y);
     const state = {
-      agent_x: you.x,
-      agent_y: you.y,
+      agent_x: a.x,
+      agent_y: a.y,
       parcels: parcels //.map((p) => ({
     //     x: p.x,
     //     y: p.y,
     //   })),
     };
+
+    console.log("state " + state.agent_x + " " + state.agent_y);
   
     // Choose an action
     const action = this.getBestAction(state);
-    console.log(action);
+    console.log("action chosen " + action);
   
     // Take the chosen action
     switch (action) {
-      case "up":
-      case "down":
-      case "left":
-      case "right":
-        await client.move(action);
-        break;
-      case "pickup":
-        await client.pickup();
-        break;
-      case "putdown":
-        await client.putdown();
-        break;
+        case "pickup":
+            client.pickup();
+            console.log("pickup");
+            break;
+        case "putdown":
+            client.putdown();
+            console.log("putdown");
+            break;
+        default:
+            client.move(action);
+            console.log("move");
     }
+    console.log("action taken")
   
     // Update the Q-values table
     if (this.lastState !== null && this.lastAction !== null) {
+        console.log("updating q value")
       const reward = this.getReward(state, parcels);
       const newState = {
-        agent_x: you.x,
-        agent_y: you.y,
+        agent_x: a.x,
+        agent_y: a.y,
         parcels: parcels //.map((p) => ({
           //x: p.x,
           //y: p.y,
         //})),
       };
+      console.log("reward " + reward);
       this.updateQValue(this.lastState, this.lastAction, reward, newState);
+      console.log("q value updated")
     }
   
     // Update last state and action
@@ -104,7 +111,9 @@ class QLearningAgent {
   
 
   getReward(state, parcels) {
-    const { x, y } = state;
+    const x = state.agent_x;
+    const y = state.agent_y;
+    console.log("x " + x + " y " + y);
     // Check if we picked up a parcel
     const parcelAtPos = parcels.find((p) => p.x === x && p.y === y);
     if (parcelAtPos) {
@@ -132,7 +141,7 @@ async function loop() {
     await agent.act(parcels);
   
     // Repeat the loop
-    setTimeout(loop(), 20);
+    setTimeout(loop(), 1);
   }
   
 
