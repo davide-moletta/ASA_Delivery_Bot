@@ -1,320 +1,119 @@
 import { default as config } from "./config.js";
 import { DeliverooApi, timer } from "@unitn-asa/deliveroo-js-client";
 
+const client = new DeliverooApi(config.host, config.token)
 
-class Entry {
-    constructor(x, y, type, id, score = 0) {
-        this.time = Date.now();
-        this.x = x;
-        this.y = y;
-        this.type = type; //parcel or agent
-        this.id = id;
-        this.score = score; //score of the parcel, 0 if agent
+//0 are walls
+//1 are walkable tiles
+//2 are delivery tiles
+
+// max coordinates of the map
+var maxX = 0;
+var maxY = 0;
+
+var mapData; // the map as a 2D array
+
+client.onConfig((config) => {
+    console.log(config);
+});
+var delivery_points_num=0;
+var walkable_points_num=0;
+client.onMap((width, height, tiles) => {
+    maxX = width;
+    maxY = height;
+
+    mapData = new Array(maxX).fill(0).map(() => new Array(maxY).fill(0));
+
+    tiles.forEach((tile) => {
+        mapData[tile.x][tile.y] = tile.delivery ? 2 : 1;
+        if(tile.delivery){
+            delivery_points_num++;
+        }
+        walkable_points_num++;
+    });
+
+    console.log(mapData);
+});
+
+number_of_agents = 1;
+// divide the map in number_of_agents pieces, each agent will work on a piece of the map (remember that at least one delivery point is needed for each agent)
+if (delivery_points_num < number_of_agents){
+    console.log("Not enough delivery points for the number of agents");
+    process.exit(1);
+}
+raw_tiles_num = maxX*maxY;
+tiles_per_agent = Math.ceil(raw_tiles_num/number_of_agents);
+
+raw_square_per_agent = Math.ceil(Math.sqrt(tiles_per_agent));
+
+// define the starting point for each agent
+// todo refactoring using agents ID
+starting_points = new Map();
+for (let i = 0; i < number_of_agents; i++) {
+    starting_points.set(i, new Array(2));
+}
+starting_points.get(0) = [0,0];
+for (let i = 1; i < number_of_agents; i++) {
+    starting_points.get(i) = [starting_points.get(i-1)[0]+raw_square_per_agent,starting_points.get(i-1)[1]+raw_square_per_agent];
+}
+
+// define the ending point for each agent, that are the max coordinates of the map thy can reach
+ending_points = new Map();
+for (let i = 0; i < number_of_agents; i++) {
+    ending_points.set(i, new Array(2));
+}
+ending_points.get(0) = [raw_square_per_agent,raw_square_per_agent];
+for (let i = 1; i < number_of_agents; i++) {
+    ending_points.get(i) = [ending_points.get(i-1)[0]+raw_square_per_agent,ending_points.get(i-1)[1]+raw_square_per_agent];
+}
+
+// check if there is at least one delivery point in each agent's area, TODO remove O(N^2)
+for (let i = 0; i < number_of_agents; i++) {
+    let delivery_points_in_area = 0;
+    for (let j = starting_points.get(i)[0]; j < ending_points.get(i)[0]; j++) {
+        for (let k = starting_points.get(i)[1]; k < ending_points.get(i)[1]; k++) {
+            if (mapData[j][k] == 2){
+                delivery_points_in_area++;
+            }
+        }
     }
-
-    toString() {
-        return this.type + " " + this.id + " " + this.x + " " + this.y + " " + this.score + " " + this.time;
-    }
-
-    equals(state) {
-        return this.x == state.x && this.y == state.y && this.type == state.type && this.id == state.id && this.score == state.score;
-    }
-
-    // update any field of the object, depending on the values passed
-    update(x = this.x, y = this.y, type = this.type, id = this.id, score = this.score) {
-        this.x = x;
-        this.y = y;
-        this.type = type;
-        this.id = id;
-        this.score = score;
-        this.time = Date.now();
+    if (delivery_points_in_area == 0){
+        console.log("No delivery points in agent "+i+" area");
+        process.exit(1);
     }
 }
 
-var entries = new Array();
-var ids = new Set();
-const client = new DeliverooApi(config.host, config.token)
 
-client.onParcelsSensing((parcels) => {
-    parcels.forEach((parcel) => {
-        var entry = new Entry(parcel.x, parcel.y, "parcel", parcel.id, parcel.reward);
-        if (!ids.has(parcel.id)) {
-            entries.push(entry);
-            ids.add(parcel.id);
-            console.log("New parcel" + entry.toString());
-        }
-        else{
-            entries[entries.indexOf(entry)].update(parcel.x, parcel.y, "parcel", parcel.id, parcel.reward);
-            console.log("Update parcel" + entry.toString());
-        }
+// function to send an agent to a point in the map
+async function sendAgent(agent, x, y){
+    console.log("Sending agent "+agent.id+" to point "+x+","+y);
+    // get current position
+    var position = {}
+    agent.onYou(response => {
+        position.x = response.x;
+        position.y = response.y;
+        console.log("Agent "+agent.id+" is at "+x+","+y);
     });
-});
-
-client.onAgentsSensing((agents) => {
-    agents.forEach((agent) => {
-        var entry = new Entry(agent.x, agent.y, "agent", agent.id);
-        if (!entries.includes(entry)) {
-            entries.push(entry);
-            console.log("New agent" + entry.toString());
+    // loop to move the agent to the point
+    while (position.x != x || position.y != y){
+        // get a random move between up, down, left and right
+        var move = ["right", "left", "up", "down"][Math.floor(Math.random() * 4)];
+        if (position.x < x){
+            move = "right"
         }
-        else{
-            entries[entries.indexOf(entry)].update(agent.x, agent.y, "agent", agent.id);
-            console.log("Update agent" + entry.toString());
+        if (position.x > x){
+            move = "left"
         }
-    });
-});
+        if (position.y < y){
+            move = "down"
+        }
+        if (position.y > y){
+            move = "up"
+        }
+        await agent.move(move);
+        // if the agent is stuck, try to move in another direction
 
 
-// var maxX = 0;
-// var maxY = 0;
+    }
 
-// // set of points
-// var points = new Set();
-// // dictionary of deliery points with key = point and value = delivery
-// var deliveryPoints = new Set();
-
-// var mapData = new Array();
-
-// //Request to the server every tile present in the map
-// client.onTile((x, y, delivery) => {
-//     //Update the max coordiantes of the map to know its size
-//     maxX = x > maxX ? x : maxX;
-//     maxY = y > maxY ? y : maxY;
-
-//     //Push every tile in the mapData array
-//     points.add([x,y])
-//     //console.log(x, y, delivery);
-//     if(delivery == "true")
-//         deliveryPoints.add([x,y])
-// }).then(() => {
-//     mapData = new Array(maxX+1).fill(0).map(() => new Array(maxY+1).fill(0));
-//     console.log("Map size: " + maxX + "x" + maxY);
-//     points.forEach((point) => {
-//         //mapData[point[0]][point[1]] = 1;
-//         try {
-//             mapData[point[0]][point[1]] = 1;
-//         }
-//         catch (e) {
-//             console.log("Error: " + e + " " + point + " " + maxX + " " + maxY	)
-//         }
-//     });
-//     // if a point is in deliveryPoints set it to 2
-//     deliveryPoints.forEach((point) => {
-//         mapData[point[0]][point[1]] = 2;
-//     });
-// }
-
-// );
-
-// async function moveAction(direction){
-//     await client.move(direction)
-// }
-
-// function findDelivery(start) {
-//     var distanceX = min(start[0], maxX - start[0]);
-//     var distanceY = min(start[1], maxY - start[1]);
-//     //var endpoint = distanceX < distanceY ? [start[0], distanceY] : [distanceX, start[1]];
-//     var endpoint;
-//     if (distanceX < distanceY){
-//         endpoint = [start[0], distanceY];
-//     }
-//     else{
-//         endpoint = [distanceX, start[1]];
-//     }
-//     // check if the endpoint is a delivery point
-//     if (mapData[endpoint[0]][endpoint[1]] == 2) {
-//         console.log("Found delivery point: " + endpoint);
-//     }
-//     // if not, find the nearest delivery point
-//     else{
-//         var minDistance = maxX + maxY;
-//     var minPoint = [0, 0];
-//     deliveryPoints.forEach((point) => {
-//         var distance = heuristicCostEstimate(start, point);
-//         if (distance < minDistance) {
-//             minDistance = distance;
-//             minPoint = point;
-//         }
-//     });
-//     endpoint = minPoint;}
-//     var steps = aStar(start, endpoint);
-//     while (steps.length > 0){
-//         moveAction(steps.pop());
-//     }
-
-// }
-
-
-
-// function min(a, b) {
-//     return a < b ? a : b;
-// }
-
-// function heuristicCostEstimate(start, end) {
-//     return Math.abs(start[0] - end[0]) + Math.abs(start[1] - end[1]);
-// }
-
-// function getNeighbors(point) {
-//     console.log(point)
-//     var neighbors = new Set();
-//     if (point[0] > 0 && mapData[point[0] - 1][point[1]] != 0) {
-//         neighbors.add((point[0] - 1, point[1]));
-//     }
-//     if (point[0] < maxX && mapData[point[0] + 1][point[1]] != 0) {
-//         neighbors.add((point[0] + 1, point[1]));
-//     }
-//     if (point[1] > 0 && mapData[point[0]][point[1] - 1] != 0) {
-//         neighbors.add((point[0], point[1] - 1));
-//     }
-//     if (point[1] < maxY && mapData[point[0]][point[1] + 1] != 0) {
-//         neighbors.add((point[0], point[1] + 1));
-//     }
-//     return neighbors;
-// }
-
-// function reconstructPath(cameFrom, current) {//using "up", "right", "down", "left" as directions
-//     var totalPath = [];
-//     while (cameFrom.has(current)) {
-//         var previous = cameFrom.get(current);
-//         if (current[0] - previous[0] == 1) {
-//             totalPath.push("right");
-//         } else if (current[0] - previous[0] == -1) {
-//             totalPath.push("left");
-//         } else if (current[1] - previous[1] == 1) {
-//             totalPath.push("down");
-//         } else if (current[1] - previous[1] == -1) {
-//             totalPath.push("up");
-//         }
-//         current = previous;
-//     }
-//     return totalPath.reverse();
-// }
-
-// // A* algorithm
-// function aStar(start, end) {
-//     console.log("ASTAR Start: " + start + " End: " + end);
-//     var openSet = new Set();
-//     var closedSet = new Set();
-//     var cameFrom = new Map();
-
-//     var gScore = new Map();
-//     var fScore = new Map();
-
-//     gScore.set(start, 0);
-//     fScore.set(start, heuristicCostEstimate(start, end));
-
-//     openSet.add(start);
-
-//     while (openSet.size > 0) {
-//         var current = openSet.values().next().value[0];
-//         console.log("Current: " + current);
-//         openSet.forEach((point) => {
-//             if (fScore.get(point) < fScore.get(current)) {
-//                 current = point;
-//             }
-//         });
-
-//         if (current == end) {
-//             return reconstructPath(cameFrom, current);
-//         }
-
-//         openSet.delete(current);
-//         closedSet.add(current);
-
-//         var neighbors = getNeighbors(current);
-//         neighbors.forEach((neighbor) => {
-//             if (closedSet.has(neighbor)) {
-//                 return;
-//             }
-
-//             var tentative_gScore = gScore.get(current) + 1;
-
-//             if (!openSet.has(neighbor)) {
-//                 openSet.add(neighbor);
-//             } else if (tentative_gScore >= gScore.get(neighbor)) {
-//                 return;
-//             }
-
-//             cameFrom.set(neighbor, current);
-//             gScore.set(neighbor, tentative_gScore);
-//             fScore.set(neighbor, gScore.get(neighbor) + heuristicCostEstimate(neighbor, end));
-//         });
-//     }
-
-//     return null;
-// }
-
-
-
-// async function agentLoop() {
-
-//     // get random previous direction
-//     var previous = ['up', 'right', 'down', 'left'][Math.floor(Math.random() * 4)];
-
-//     while (true) {
-//         let tried = [];
-//         var myYou = {};
-//         var myParcels = [];
-
-//         await client.pickup();
-
-//         while (tried.length < 4) {
-
-//             let current = { up: 'down', right: 'left', down: 'up', left: 'right' }[previous] // backward
-
-//             if (tried.length < 3) { // try ahaed or turn (before going backward)
-//                 current = ['up', 'right', 'down', 'left'].filter(d => d != current)[Math.floor(Math.random() * 3)];
-//             }
-
-//             if (!tried.includes(current)) {
-//                 if (await client.move(current)) {
-
-//                     //Gets coordinates of the agent from the server
-//                     client.onYou(you => {
-//                         //Rounding to avoid .6 and .4 coordinates (.6 -> moving in the next integer, .4 -> moving in the previous integer)
-//                         you.x = Math.round(you.x);
-//                         you.y = Math.round(you.y);
-//                         myYou = you
-//                     });
-
-//                     //console.log(myYou.x, myYou.y);
-
-//                     //Gets the parcels sensed by the agent
-//                     await client.onParcelsSensing((parcels) => {
-//                         //Add the parcels carried by the agent to the myParcels array
-//                         for (let parcel of parcels) {
-//                             if (parcel.carriedBy != null && parcel.carriedBy == myYou.id && !(parcel in myParcels)) {
-//                                 myParcels.push(parcel);
-//                             }
-//                         }
-//                     });
-
-//                     //If the agent is carrying a parcel, go to the nearest delivery point
-//                     if (myParcels.length != 0) {
-//                         console.log("I'm carrying a parcel");
-
-//                         findDelivery([myYou.x, myYou.y]);
-//                     }
-
-//                     //if the agent is on the border of the map, put down the parcel
-//                     if (myYou.x == 0 || myYou.x == maxX || myYou.y == 0 || myYou.y == maxY) {
-//                         await client.putdown();
-//                     }
-
-//                     previous = current;
-//                     break;
-//                 }
-
-//                 tried.push(current);
-//             }
-
-//         }
-
-//         if (tried.length == 4) {
-//             console.log('stucked');
-//             await client.timer(1000); // stucked, wait 1 sec and retry
-//         }
-//     }
-// }
-
-// agentLoop();
+}
