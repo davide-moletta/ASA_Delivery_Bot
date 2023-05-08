@@ -1,7 +1,7 @@
 
 module.exports = {
 
-    MAP_FILE: 'empty_map',    // options are 'default_map' (DEFAULT), 'empty_map', 'map_20', ...files in levels/maps
+    MAP_FILE: 'default_map',    // options are 'default_map' (DEFAULT), 'empty_map', 'map_20', ...files in levels/maps
 
     PARCELS_GENERATION_INTERVAL: '2s',  // options are '1s', '2s' (DEFAULT), '5s', '10s'
 
