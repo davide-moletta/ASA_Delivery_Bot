@@ -41,7 +41,7 @@ function divideMatrix(matrix, n) {
   return slices;
 }
 
-function getNeighbors(matrix, row, col) {
+function getNeighbors(matrix, row, col, minimal = false) {
   const numRows = matrix.length;
   const numCols = matrix[0].length;
   var neighbors = [];
@@ -57,6 +57,7 @@ function getNeighbors(matrix, row, col) {
   if (col + 1 < numCols) {
     neighbors.push(matrix[row][col + 1]);
   }
+  if(minimal) return neighbors;
   if (row - 1 >= 0 && col + 1 < numCols) {
     neighbors.push(matrix[row - 1][col + 1]);
   }
@@ -94,10 +95,10 @@ for (let i = 3; i < 4; i++) {
 // create a copy of mapData with the same values
 const mapData2 = mapData.map((arr) => arr.slice());
 
-
+const minimal = false
 for(let i = 0; i < mapData.length; i++){
     for(let j = 0; j < mapData[i].length; j++){
-        var neighbors = getNeighbors(mapData, i, j);
+        var neighbors = getNeighbors(mapData, i, j, minimal);
         var neighborsSet = new Set(neighbors);
         var count = 0;
         for(let k = 0; k < neighbors.length; k++){
@@ -106,8 +107,11 @@ for(let i = 0; i < mapData.length; i++){
         if(count <= 3){
             mapData2[i][j] = [...Array.from(neighborsSet)];
         }
+        else mapData2[i][j] = [mapData[i][j]];
     }
 }
+console.table(mapData);
+
 console.table(mapData2);
 
 
