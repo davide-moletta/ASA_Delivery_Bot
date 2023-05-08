@@ -65,11 +65,65 @@ function divideMatrix(matrix, n) {
 // }
 
 /* CREATE MAP DATA */
+var maxX = 0;
+var maxY = 0;
+var mapData;
+
+clients[0].onMap((width, height, tiles) => {
+    maxX = width;
+    maxY = height;
+
+    mapData = new Array(maxX).fill(0).map(() => new Array(maxY).fill(0));
+
+    tiles.forEach((tile) => {
+        mapData[tile.x][tile.y] = tile.delivery ? 2 : 1;
+    });
+
+    //console.log(mapData);
+});
 
 /* DIVIDE USING divideMatrix WITH clients.length */
 
+const slices_res = divideMatrix(mapData, clients.length);
+
 /* CREATE AN AGENT LOOP THAT MAKES THE AGENT WALK LONG THE BORDER*/
+
+function agentLoop() {
+    clients.forEach((client, index) => {
+        goalPoint = slices_res[index][0];
+        moves = ["up", "down", "left", "right"];
+        // get agent current position
+        var x, y;
+        client.onYou((agent) => {   
+            x = agent.x;
+            y = agent.y;
+        });
+        // select the best move for the agent to reach the goal point
+        var bestMove = moves[0];
+        var bestDistance = Math.abs(x - goalPoint[0]) + Math.abs(y - goalPoint[1]);
+        moves.forEach((move) => {
+            var distance = 0;
+            if (move == "up") {
+                distance = Math.abs(x - 1 - goalPoint[0]) + Math.abs(y - goalPoint[1]);
+            } else if (move == "down") {
+                distance = Math.abs(x + 1 - goalPoint[0]) + Math.abs(y - goalPoint[1]);
+            } else if (move == "left") {
+                distance = Math.abs(x - goalPoint[0]) + Math.abs(y - 1 - goalPoint[1]);
+            } else if (move == "right") {
+                distance = Math.abs(x - goalPoint[0]) + Math.abs(y + 1 - goalPoint[1]);
+            }
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestMove = move;
+            }
+        });
+        // move the agent
+        client.move(bestMove);
+    });
+}
 
 /* GIVE EACH AGENT ITS SLICE OF MAP */
 
 /* ENJOY */
+
+timer(agentLoop, 100);
