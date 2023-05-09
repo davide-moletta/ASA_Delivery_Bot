@@ -74,7 +74,36 @@ function divideMatrix(matrix, n, extended = false, verbose = false) {
     }
   }
 
-  return slices_final;
+  var center_spot = [0, 0];
+  const center_spots = [];
+  slices_final.forEach((slice) => {
+    // get the top right, top left, bottom right, bottom left
+    var top_right = [0, 0];
+    var top_left = [0, 0];
+    var bottom_right = [0, 0];
+    var bottom_left = [0, 0];
+    slice.forEach((element) => {
+      if (element[0] < top_right[0] || element[1] > top_right[1]) {
+        top_right = element;
+      }
+      if (element[0] < top_left[0] || element[1] < top_left[1]) {
+        top_left = element;
+      }
+      if (element[0] > bottom_right[0] || element[1] > bottom_right[1]) {
+        bottom_right = element;
+      }
+      if (element[0] > bottom_left[0] || element[1] < bottom_left[1]) {
+        bottom_left = element;
+      }
+      center_spot[0] += element[0];
+      center_spot[1] += element[1];
+    });
+    center_spot[0] = Math.floor(center_spot[0] / slice.length);
+    center_spot[1] = Math.floor(center_spot[1] / slice.length);
+    center_spots.push(center_spot);
+  });
+
+  return center_spots, slices_final;
 }
 
 const clients = [
@@ -136,6 +165,7 @@ var maxX = 0;
 var maxY = 0;
 var mapData;
 var slices_res;
+var center_spots;
 
 clients[0].onMap((width, height, tiles) => {
   maxX = width;
@@ -148,7 +178,7 @@ clients[0].onMap((width, height, tiles) => {
   });
 
   console.table(mapData);
-  slices_res = divideMatrix(mapData, clients.length);
+  center_spots, slices_res = divideMatrix(mapData, clients.length);
 });
 
 /* DIVIDE USING divideMatrix WITH clients.length */
@@ -206,7 +236,7 @@ async function agentLoop() {
       me = you;
       console.log("Agent 0 is in " + you.x + " " + you.y);
     });
-    await clients[0].move("right")
+    await clients[0].move("right");
   }
 }
 
