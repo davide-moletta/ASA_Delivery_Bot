@@ -1,258 +1,183 @@
-import { default as config } from "./config.js";
+import { default as config_multi } from "./config_multi.js";
 import { DeliverooApi, timer } from "@unitn-asa/deliveroo-js-client";
 
-const client = new DeliverooApi(config.host, config.token)
+// CHANGE THIS TO TEST
+const extended = false;
+const sizeX = 20;
+const sizeY = 20;
+const agents_num = 3;
+// const clients = [
+//     new DeliverooApi(config_multi.host1, config_multi.token1),
+//     new DeliverooApi(config_multi.host2, config_multi.token2),
+//     new DeliverooApi(config_multi.host3, config_multi.token3),
+//     new DeliverooApi(config_multi.host4, config_multi.token4)
+// ];
 
-var maxX = 0;
-var maxY = 0;
+// divide a circle in n equal slices like pizza adapted to a matrix
+function divideMatrix(matrix, n) {
+  const numRows = matrix.length;
+  const numCols = matrix[0].length;
+  const numSlices = n;
+  const angle = (2 * Math.PI) / numSlices;
+  const center = [Math.floor(numRows / 2), Math.floor(numCols / 2)];
+  const slices = [];
 
-// set of points
-var points = new Set();
-// dictionary of deliery points with key = point and value = delivery
-var deliveryPoints = new Set();
-
-var mapData = new Array();
-
-//Request to the server every tile present in the map
-client.onTile((x, y, delivery) => {
-    //Update the max coordiantes of the map to know its size
-    maxX = x > maxX ? x : maxX;
-    maxY = y > maxY ? y : maxY;
-
-    //Push every tile in the mapData array
-    points.add([x,y])
-    //console.log(x, y, delivery);
-    if(delivery == "true")
-        deliveryPoints.add([x,y])
-}).then(() => {
-    mapData = new Array(maxX+1).fill(0).map(() => new Array(maxY+1).fill(0));
-    console.log("Map size: " + maxX + "x" + maxY);
-    points.forEach((point) => {
-        //mapData[point[0]][point[1]] = 1;
-        try {
-            mapData[point[0]][point[1]] = 1;
+  // create the pairs of coordinates for each slice
+  for (let i = 0; i < numSlices; i++) {
+    const slice = [];
+    //slice.push(center);
+    for (let row = 0; row < numRows; row++) {
+      for (let col = 0; col < numCols; col++) {
+        const x = col - center[1];
+        const y = center[0] - row;
+        var currentAngle = Math.atan2(y, x);
+        if (currentAngle < 0) {
+          currentAngle += 2 * Math.PI;
         }
-        catch (e) {
-            console.log("Error: " + e + " " + point + " " + maxX + " " + maxY	)
+        const sliceStartAngle = angle * i;
+        const sliceEndAngle = angle * (i + 1);
+        if (currentAngle >= sliceStartAngle && currentAngle < sliceEndAngle) {
+          slice.push([row, col]);
         }
-    });
-    // if a point is in deliveryPoints set it to 2
-    deliveryPoints.forEach((point) => {
-        mapData[point[0]][point[1]] = 2;
-    });
+      }
+    }
+    slices.push(slice);
+  }
+  return slices;
 }
 
-);
+function getNeighbors(matrix, row, col, extended = false) {
+  const numRows = matrix.length;
+  const numCols = matrix[0].length;
+  var neighbors = [];
+  if (row - 1 >= 0) {
+    neighbors.push(matrix[row - 1][col]);
+  }
+  if (row + 1 < numRows) {
+    neighbors.push(matrix[row + 1][col]);
+  }
+  if (col - 1 >= 0) {
+    neighbors.push(matrix[row][col - 1]);
+  }
+  if (col + 1 < numCols) {
+    neighbors.push(matrix[row][col + 1]);
+  }
 
-async function moveAction(direction){
-    await client.move(direction)
+  if (extended) return neighbors;
+
+  if (row - 1 >= 0 && col + 1 < numCols) {
+    neighbors.push(matrix[row - 1][col + 1]);
+  }
+  if (row - 1 >= 0 && col - 1 >= 0) {
+    neighbors.push(matrix[row - 1][col - 1]);
+  }
+  if (row + 1 < numRows && col + 1 < numCols) {
+    neighbors.push(matrix[row + 1][col + 1]);
+  }
+  if (row + 1 < numRows && col - 1 >= 0) {
+    neighbors.push(matrix[row + 1][col - 1]);
+  }
+  return neighbors;
 }
 
-function findDelivery(start) {
-    var distanceX = min(start[0], maxX - start[0]);
-    var distanceY = min(start[1], maxY - start[1]);
-    //var endpoint = distanceX < distanceY ? [start[0], distanceY] : [distanceX, start[1]];
-    var endpoint;
-    if (distanceX < distanceY){
-        endpoint = [start[0], distanceY];
-    }
-    else{
-        endpoint = [distanceX, start[1]];
-    }
-    // check if the endpoint is a delivery point
-    if (mapData[endpoint[0]][endpoint[1]] == 2) {
-        console.log("Found delivery point: " + endpoint);
-    }
-    // if not, find the nearest delivery point
-    else{
-        var minDistance = maxX + maxY;
-    var minPoint = [0, 0];
-    deliveryPoints.forEach((point) => {
-        var distance = heuristicCostEstimate(start, point);
-        if (distance < minDistance) {
-            minDistance = distance;
-            minPoint = point;
-        }
-    });
-    endpoint = minPoint;}
-    var steps = aStar(start, endpoint);
-    while (steps.length > 0){
-        moveAction(steps.pop());
-    }
+// divide the matrix in n parts
 
+const mapData = new Array(sizeX).fill(99).map(() => new Array(sizeY).fill(99));
+const slices_res = divideMatrix(mapData, agents_num);
+// console.log(slices_res);
+
+// update the matrix setting the value of the cells in the slices to the slice index
+for (let i = 0; i < slices_res.length; i++) {
+  for (let j = 0; j < slices_res[i].length; j++) {
+    //if (mapData[slices_res[i][j][0]][slices_res[i][j][1]] == 99)
+    //mapData[slices_res[i][j][0]][slices_res[i][j][1]] = [i];
+    mapData[slices_res[i][j][0]][slices_res[i][j][1]] = i;
+    //else mapData[slices_res[i][j][0]][slices_res[i][j][1]].push(i);
+  }
 }
 
+  const mapData2 = mapData.map((arr) => arr.slice());
 
-
-function min(a, b) {
-    return a < b ? a : b;
-}
-
-function heuristicCostEstimate(start, end) {
-    return Math.abs(start[0] - end[0]) + Math.abs(start[1] - end[1]);
-}
-
-function getNeighbors(point) {
-    console.log(point)
-    var neighbors = new Set();
-    if (point[0] > 0 && mapData[point[0] - 1][point[1]] != 0) {
-        neighbors.add((point[0] - 1, point[1]));
+  for (let i = 0; i < mapData.length; i++) {
+    for (let j = 0; j < mapData[i].length; j++) {
+      var neighbors = getNeighbors(mapData, i, j, extended);
+      var neighborsSet = new Set(neighbors);
+      var count = 0;
+      for (let k = 0; k < neighbors.length; k++) {
+        if (neighbors[k] == mapData[i][j]) count++;
+      }
+      if (count <= 3) {
+        mapData2[i][j] = [...Array.from(neighborsSet)];
+      } else mapData2[i][j] = [mapData[i][j]];
     }
-    if (point[0] < maxX && mapData[point[0] + 1][point[1]] != 0) {
-        neighbors.add((point[0] + 1, point[1]));
-    }
-    if (point[1] > 0 && mapData[point[0]][point[1] - 1] != 0) {
-        neighbors.add((point[0], point[1] - 1));
-    }
-    if (point[1] < maxY && mapData[point[0]][point[1] + 1] != 0) {
-        neighbors.add((point[0], point[1] + 1));
-    }
-    return neighbors;
-}
+  }
+  console.table(mapData);
+  console.table(mapData2);
 
-function reconstructPath(cameFrom, current) {//using "up", "right", "down", "left" as directions
-    var totalPath = [];
-    while (cameFrom.has(current)) {
-        var previous = cameFrom.get(current);
-        if (current[0] - previous[0] == 1) {
-            totalPath.push("right");
-        } else if (current[0] - previous[0] == -1) {
-            totalPath.push("left");
-        } else if (current[1] - previous[1] == 1) {
-            totalPath.push("down");
-        } else if (current[1] - previous[1] == -1) {
-            totalPath.push("up");
-        }
-        current = previous;
-    }
-    return totalPath.reverse();
-}
+  // print the matrix
+  //console.log("Final matrix with " + i + " agents:");
+  //console.table(mapData);
 
-// A* algorithm
-function aStar(start, end) {
-    console.log("ASTAR Start: " + start + " End: " + end);
-    var openSet = new Set();
-    var closedSet = new Set();
-    var cameFrom = new Map();
+// /* CREATE MAP DATA */
+// var maxX = 0;
+// var maxY = 0;
+// var mapData;
 
-    var gScore = new Map();
-    var fScore = new Map();
+// clients[0].onMap((width, height, tiles) => {
+//     maxX = width;
+//     maxY = height;
 
-    gScore.set(start, 0);
-    fScore.set(start, heuristicCostEstimate(start, end));
+//     mapData = new Array(maxX).fill(0).map(() => new Array(maxY).fill(0));
 
-    openSet.add(start);
+//     tiles.forEach((tile) => {
+//         mapData[tile.x][tile.y] = tile.delivery ? 2 : 1;
+//     });
 
-    while (openSet.size > 0) {
-        var current = openSet.values().next().value[0];
-        console.log("Current: " + current);
-        openSet.forEach((point) => {
-            if (fScore.get(point) < fScore.get(current)) {
-                current = point;
-            }
-        });
+//     //console.log(mapData);
+// });
 
-        if (current == end) {
-            return reconstructPath(cameFrom, current);
-        }
+// /* DIVIDE USING divideMatrix WITH clients.length */
 
-        openSet.delete(current);
-        closedSet.add(current);
+// const slices_res = divideMatrix(mapData, clients.length);
 
-        var neighbors = getNeighbors(current);
-        neighbors.forEach((neighbor) => {
-            if (closedSet.has(neighbor)) {
-                return;
-            }
+// /* CREATE AN AGENT LOOP THAT MAKES THE AGENT WALK LONG THE BORDER*/
 
-            var tentative_gScore = gScore.get(current) + 1;
+// function agentLoop() {
+//     clients.forEach((client, index) => {
+//         goalPoint = slices_res[index][0];
+//         moves = ["up", "down", "left", "right"];
+//         // get agent current position
+//         var x, y;
+//         client.onYou((agent) => {
+//             x = agent.x;
+//             y = agent.y;
+//         });
+//         // select the best move for the agent to reach the goal point
+//         var bestMove = moves[0];
+//         var bestDistance = Math.abs(x - goalPoint[0]) + Math.abs(y - goalPoint[1]);
+//         moves.forEach((move) => {
+//             var distance = 0;
+//             if (move == "up") {
+//                 distance = Math.abs(x - 1 - goalPoint[0]) + Math.abs(y - goalPoint[1]);
+//             } else if (move == "down") {
+//                 distance = Math.abs(x + 1 - goalPoint[0]) + Math.abs(y - goalPoint[1]);
+//             } else if (move == "left") {
+//                 distance = Math.abs(x - goalPoint[0]) + Math.abs(y - 1 - goalPoint[1]);
+//             } else if (move == "right") {
+//                 distance = Math.abs(x - goalPoint[0]) + Math.abs(y + 1 - goalPoint[1]);
+//             }
+//             if (distance < bestDistance) {
+//                 bestDistance = distance;
+//                 bestMove = move;
+//             }
+//         });
+//         // move the agent
+//         client.move(bestMove);
+//     });
+// }
 
-            if (!openSet.has(neighbor)) {
-                openSet.add(neighbor);
-            } else if (tentative_gScore >= gScore.get(neighbor)) {
-                return;
-            }
+// /* GIVE EACH AGENT ITS SLICE OF MAP */
 
-            cameFrom.set(neighbor, current);
-            gScore.set(neighbor, tentative_gScore);
-            fScore.set(neighbor, gScore.get(neighbor) + heuristicCostEstimate(neighbor, end));
-        });
-    }
+// /* ENJOY */
 
-    return null;
-}
-
-
-
-async function agentLoop() {
-
-    // get random previous direction
-    var previous = ['up', 'right', 'down', 'left'][Math.floor(Math.random() * 4)];
-
-    while (true) {
-        let tried = [];
-        var myYou = {};
-        var myParcels = [];
-
-        await client.pickup();
-
-        while (tried.length < 4) {
-
-            let current = { up: 'down', right: 'left', down: 'up', left: 'right' }[previous] // backward
-
-            if (tried.length < 3) { // try ahaed or turn (before going backward)
-                current = ['up', 'right', 'down', 'left'].filter(d => d != current)[Math.floor(Math.random() * 3)];
-            }
-
-            if (!tried.includes(current)) {
-                if (await client.move(current)) {
-
-                    //Gets coordinates of the agent from the server
-                    client.onYou(you => {
-                        //Rounding to avoid .6 and .4 coordinates (.6 -> moving in the next integer, .4 -> moving in the previous integer)
-                        you.x = Math.round(you.x);
-                        you.y = Math.round(you.y);
-                        myYou = you
-                    });
-
-                    //console.log(myYou.x, myYou.y);
-
-                    //Gets the parcels sensed by the agent
-                    await client.onParcelsSensing((parcels) => {
-                        //Add the parcels carried by the agent to the myParcels array
-                        for (let parcel of parcels) {
-                            if (parcel.carriedBy != null && parcel.carriedBy == myYou.id && !(parcel in myParcels)) {
-                                myParcels.push(parcel);
-                            }
-                        }
-                    });
-
-                    //If the agent is carrying a parcel, go to the nearest delivery point
-                    if (myParcels.length != 0) {
-                        console.log("I'm carrying a parcel");
-
-                        findDelivery([myYou.x, myYou.y]);
-                    }
-
-                    //if the agent is on the border of the map, put down the parcel
-                    if (myYou.x == 0 || myYou.x == maxX || myYou.y == 0 || myYou.y == maxY) {
-                        await client.putdown();
-                    }
-
-                    previous = current;
-                    break;
-                }
-
-                tried.push(current);
-            }
-
-        }
-
-        if (tried.length == 4) {
-            console.log('stucked');
-            await client.timer(1000); // stucked, wait 1 sec and retry
-        }
-    }
-}
-
-agentLoop();
+// timer(agentLoop, 100);
