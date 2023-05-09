@@ -11,10 +11,6 @@ const client = new DeliverooApi(config.host, config.token)
 var maxX = 0;
 var maxY = 0;
 
-var points = new Set(); // set of points
-
-var deliveryPoints = new Set(); // dictionary of deliery points with key = point and value = delivery
-
 var mapData; // the map as a 2D array
 
 let cols = 0; //columns in the grid
