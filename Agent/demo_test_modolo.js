@@ -3,6 +3,7 @@ import { DeliverooApi, timer } from "@unitn-asa/deliveroo-js-client";
 
 // CHANGE THIS TO TEST
 const extended = false;
+const verbose = false;
 const sizeX = 20;
 const sizeY = 20;
 const agents_num = 3;
@@ -14,7 +15,7 @@ const agents_num = 3;
 // ];
 
 // divide a circle in n equal slices like pizza adapted to a matrix
-function divideMatrix(matrix, n) {
+function divideMatrix(matrix, n, extended = false, verbose = false) {
   const numRows = matrix.length;
   const numCols = matrix[0].length;
   const numSlices = n;
@@ -43,7 +44,43 @@ function divideMatrix(matrix, n) {
     }
     slices.push(slice);
   }
-  return slices;
+
+  for (let i = 0; i < slices.length; i++) {
+    for (let j = 0; j < slices[i].length; j++) {
+      matrix[slices[i][j][0]][slices[i][j][1]] = i;
+    }
+  }
+  if(verbose) console.table(matrix);
+  const mapData2 = matrix.map((arr) => arr.slice());
+
+  for (let i = 0; i < matrix.length; i++) {
+    for (let j = 0; j < matrix[i].length; j++) {
+      var neighbors = getNeighbors(matrix, i, j, extended);
+      var neighborsSet = new Set(neighbors);
+      var count = 0;
+      for (let k = 0; k < neighbors.length; k++) {
+        if (neighbors[k] == matrix[i][j]) count++;
+      }
+      if (count <= 3) {
+        mapData2[i][j] = [...Array.from(neighborsSet)];
+      } else mapData2[i][j] = [matrix[i][j]];
+    }
+  }
+  if (verbose) console.table(mapData2);
+
+  const slices_final = [];
+  for (let i = 0; i < n; i++) {
+    slices_final.push([]);
+  }
+  for (let i = 0; i < mapData2.length; i++) {
+    for (let j = 0; j < mapData2[i].length; j++) {
+      for (let k = 0; k < mapData2[i][j].length; k++) {
+        slices_final[mapData2[i][j][k]].push([i, j]);
+      }
+    }
+  }
+
+  return slices_final;
 }
 
 function getNeighbors(matrix, row, col, extended = false) {
@@ -83,36 +120,10 @@ function getNeighbors(matrix, row, col, extended = false) {
 // divide the matrix in n parts
 
 const mapData = new Array(sizeX).fill(99).map(() => new Array(sizeY).fill(99));
-const slices_res = divideMatrix(mapData, agents_num);
-// console.log(slices_res);
+const slices_res = divideMatrix(mapData, agents_num, extended, verbose);
+  
+//console.log(slices_res);
 
-// update the matrix setting the value of the cells in the slices to the slice index
-for (let i = 0; i < slices_res.length; i++) {
-  for (let j = 0; j < slices_res[i].length; j++) {
-    //if (mapData[slices_res[i][j][0]][slices_res[i][j][1]] == 99)
-    //mapData[slices_res[i][j][0]][slices_res[i][j][1]] = [i];
-    mapData[slices_res[i][j][0]][slices_res[i][j][1]] = i;
-    //else mapData[slices_res[i][j][0]][slices_res[i][j][1]].push(i);
-  }
-}
-
-  const mapData2 = mapData.map((arr) => arr.slice());
-
-  for (let i = 0; i < mapData.length; i++) {
-    for (let j = 0; j < mapData[i].length; j++) {
-      var neighbors = getNeighbors(mapData, i, j, extended);
-      var neighborsSet = new Set(neighbors);
-      var count = 0;
-      for (let k = 0; k < neighbors.length; k++) {
-        if (neighbors[k] == mapData[i][j]) count++;
-      }
-      if (count <= 3) {
-        mapData2[i][j] = [...Array.from(neighborsSet)];
-      } else mapData2[i][j] = [mapData[i][j]];
-    }
-  }
-  console.table(mapData);
-  console.table(mapData2);
 
   // print the matrix
   //console.log("Final matrix with " + i + " agents:");
