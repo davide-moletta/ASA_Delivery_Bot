@@ -7,15 +7,9 @@ const verbose = false;
 const sizeX = 20;
 const sizeY = 20;
 const agents_num = 3;
-// const clients = [
-//     new DeliverooApi(config_multi.host1, config_multi.token1),
-//     new DeliverooApi(config_multi.host2, config_multi.token2),
-//     new DeliverooApi(config_multi.host3, config_multi.token3),
-//     new DeliverooApi(config_multi.host4, config_multi.token4)
-// ];
 
-// divide a circle in n equal slices like pizza adapted to a matrix
 function divideMatrix(matrix, n, extended = false, verbose = false) {
+  const mapData = matrix.map((arr) => arr.slice());
   const numRows = matrix.length;
   const numCols = matrix[0].length;
   const numSlices = n;
@@ -47,23 +41,23 @@ function divideMatrix(matrix, n, extended = false, verbose = false) {
 
   for (let i = 0; i < slices.length; i++) {
     for (let j = 0; j < slices[i].length; j++) {
-      matrix[slices[i][j][0]][slices[i][j][1]] = i;
+      mapData[slices[i][j][0]][slices[i][j][1]] = i;
     }
   }
-  if(verbose) console.table(matrix);
-  const mapData2 = matrix.map((arr) => arr.slice());
+  if (verbose) console.table(mapData);
+  const mapData2 = mapData.map((arr) => arr.slice());
 
-  for (let i = 0; i < matrix.length; i++) {
-    for (let j = 0; j < matrix[i].length; j++) {
-      var neighbors = getNeighbors(matrix, i, j, extended);
+  for (let i = 0; i < mapData.length; i++) {
+    for (let j = 0; j < mapData[i].length; j++) {
+      var neighbors = getNeighbors(mapData, i, j, extended);
       var neighborsSet = new Set(neighbors);
       var count = 0;
       for (let k = 0; k < neighbors.length; k++) {
-        if (neighbors[k] == matrix[i][j]) count++;
+        if (neighbors[k] == mapData[i][j]) count++;
       }
       if (count <= 3) {
         mapData2[i][j] = [...Array.from(neighborsSet)];
-      } else mapData2[i][j] = [matrix[i][j]];
+      } else mapData2[i][j] = [mapData[i][j]];
     }
   }
   if (verbose) console.table(mapData2);
@@ -82,6 +76,15 @@ function divideMatrix(matrix, n, extended = false, verbose = false) {
 
   return slices_final;
 }
+
+const clients = [
+  new DeliverooApi(config_multi.host1, config_multi.token1), //,
+  //     new DeliverooApi(config_multi.host2, config_multi.token2),
+  //     new DeliverooApi(config_multi.host3, config_multi.token3),
+  //     new DeliverooApi(config_multi.host4, config_multi.token4)
+];
+
+// divide a circle in n equal slices like pizza adapted to a matrix
 
 function getNeighbors(matrix, row, col, extended = false) {
   const numRows = matrix.length;
@@ -119,76 +122,96 @@ function getNeighbors(matrix, row, col, extended = false) {
 
 // divide the matrix in n parts
 
-const mapData = new Array(sizeX).fill(99).map(() => new Array(sizeY).fill(99));
-const slices_res = divideMatrix(mapData, agents_num, extended, verbose);
-  
+//const mapData = new Array(sizeX).fill(99).map(() => new Array(sizeY).fill(99));
+//const slices_res = divideMatrix(mapData, agents_num, extended, verbose);
+
 //console.log(slices_res);
 
+// print the matrix
+//console.log("Final matrix with " + i + " agents:");
+//console.table(mapData);
 
-  // print the matrix
-  //console.log("Final matrix with " + i + " agents:");
-  //console.table(mapData);
+/* CREATE MAP DATA */
+var maxX = 0;
+var maxY = 0;
+var mapData;
+var slices_res;
 
-// /* CREATE MAP DATA */
-// var maxX = 0;
-// var maxY = 0;
-// var mapData;
+clients[0].onMap((width, height, tiles) => {
+  maxX = width;
+  maxY = height;
+  console.log("Map size: " + maxX + "x" + maxY);
+  mapData = new Array(maxX).fill(0).map(() => new Array(maxY).fill(0));
 
-// clients[0].onMap((width, height, tiles) => {
-//     maxX = width;
-//     maxY = height;
+  tiles.forEach((tile) => {
+    mapData[tile.x][tile.y] = tile.delivery ? 2 : 1;
+  });
 
-//     mapData = new Array(maxX).fill(0).map(() => new Array(maxY).fill(0));
+  console.table(mapData);
+  slices_res = divideMatrix(mapData, clients.length);
+});
 
-//     tiles.forEach((tile) => {
-//         mapData[tile.x][tile.y] = tile.delivery ? 2 : 1;
-//     });
-
-//     //console.log(mapData);
-// });
-
-// /* DIVIDE USING divideMatrix WITH clients.length */
+/* DIVIDE USING divideMatrix WITH clients.length */
 
 // const slices_res = divideMatrix(mapData, clients.length);
 
-// /* CREATE AN AGENT LOOP THAT MAKES THE AGENT WALK LONG THE BORDER*/
+/* CREATE AN AGENT LOOP THAT MAKES THE AGENT WALK LONG THE BORDER*/
 
-// function agentLoop() {
-//     clients.forEach((client, index) => {
-//         goalPoint = slices_res[index][0];
-//         moves = ["up", "down", "left", "right"];
-//         // get agent current position
-//         var x, y;
-//         client.onYou((agent) => {
-//             x = agent.x;
-//             y = agent.y;
-//         });
-//         // select the best move for the agent to reach the goal point
-//         var bestMove = moves[0];
-//         var bestDistance = Math.abs(x - goalPoint[0]) + Math.abs(y - goalPoint[1]);
-//         moves.forEach((move) => {
-//             var distance = 0;
-//             if (move == "up") {
-//                 distance = Math.abs(x - 1 - goalPoint[0]) + Math.abs(y - goalPoint[1]);
-//             } else if (move == "down") {
-//                 distance = Math.abs(x + 1 - goalPoint[0]) + Math.abs(y - goalPoint[1]);
-//             } else if (move == "left") {
-//                 distance = Math.abs(x - goalPoint[0]) + Math.abs(y - 1 - goalPoint[1]);
-//             } else if (move == "right") {
-//                 distance = Math.abs(x - goalPoint[0]) + Math.abs(y + 1 - goalPoint[1]);
-//             }
-//             if (distance < bestDistance) {
-//                 bestDistance = distance;
-//                 bestMove = move;
-//             }
-//         });
-//         // move the agent
-//         client.move(bestMove);
-//     });
-// }
+async function agentLoop() {
+  await clients[0].move("right");
+  while (true) {
+    // clients.forEach((client, index) => {
+    //   goalPoint = slices_res[index][0];
+    //   moves = ["up", "down", "left", "right"];
+    //   // get agent current position
+    //   var x, y;
+    //   client.onYou((agent) => {
+    //     x = agent.x;
+    //     y = agent.y;
+    //   });
+    //   // select the best move for the agent to reach the goal point
+    //   var bestMove = moves[0];
+    //   var bestDistance =
+    //     Math.abs(x - goalPoint[0]) + Math.abs(y - goalPoint[1]);
+    //   moves.forEach((move) => {
+    //     var distance = 0;
+    //     if (move == "up") {
+    //       distance =
+    //         Math.abs(x - 1 - goalPoint[0]) + Math.abs(y - goalPoint[1]);
+    //     } else if (move == "down") {
+    //       distance =
+    //         Math.abs(x + 1 - goalPoint[0]) + Math.abs(y - goalPoint[1]);
+    //     } else if (move == "left") {
+    //       distance =
+    //         Math.abs(x - goalPoint[0]) + Math.abs(y - 1 - goalPoint[1]);
+    //     } else if (move == "right") {
+    //       distance =
+    //         Math.abs(x - goalPoint[0]) + Math.abs(y + 1 - goalPoint[1]);
+    //     }
+    //     if (distance < bestDistance) {
+    //       bestDistance = distance;
+    //       bestMove = move;
+    //     }
+    //   });
+    //   // move the agent
+    // });
+    // console.log("Moving agent " + index + " to " + bestMove);
+    // await client.move(bestMove);
+    var me = {};
+    //Gets coordinates of the agent from the server
+    clients[0].onYou((you) => {
+      //Rounding to avoid .6 and .4 coordinates (.6 -> moving in the next integer, .4 -> moving in the previous integer)
+      you.x = Math.round(you.x);
+      you.y = Math.round(you.y);
+      me = you;
+      console.log("Agent 0 is in " + you.x + " " + you.y);
+    });
+    await clients[0].move("right")
+  }
+}
 
-// /* GIVE EACH AGENT ITS SLICE OF MAP */
+/* GIVE EACH AGENT ITS SLICE OF MAP */
 
-// /* ENJOY */
+/* ENJOY */
 
-// timer(agentLoop, 100);
+agentLoop();
