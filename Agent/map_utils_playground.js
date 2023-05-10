@@ -17,7 +17,6 @@ function divideMatrix(matrix, n, extended = false, verbose = false) {
   // create the pairs of coordinates for each slice
   for (let i = 0; i < numSlices; i++) {
     const slice = [];
-    //slice.push(center);
     for (let row = 0; row < numRows; row++) {
       for (let col = 0; col < numCols; col++) {
         const x = col - center[1];
@@ -122,11 +121,13 @@ function getNeighbors(matrix, row, col, extended = false) {
   return neighbors;
 }
 
+export { divideMatrix, getNeighbors };
+
 // divide the matrix in n parts
 
-const mapData = new Array(sizeX).fill(99).map(() => new Array(sizeY).fill(99));
-const [center_spots, slices_res] = divideMatrix(mapData, agents_num, extended, verbose);
-console.log(center_spots);
+// const mapData = new Array(sizeX).fill(99).map(() => new Array(sizeY).fill(99));
+// const [center_spots, slices_res] = divideMatrix(mapData, agents_num, extended, verbose);
+// console.log(center_spots);
 
 
 
