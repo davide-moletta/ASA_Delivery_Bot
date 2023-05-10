@@ -5,9 +5,9 @@ import { divideMatrix } from "./map_utils_playground.js";
 
 const clients = [
   new DeliverooApi(config_multi.host1, config_multi.token1),
-  new DeliverooApi(config_multi.host2, config_multi.token2),
-  new DeliverooApi(config_multi.host3, config_multi.token3),
-  new DeliverooApi(config_multi.host4, config_multi.token4),
+  // new DeliverooApi(config_multi.host2, config_multi.token2),
+  // new DeliverooApi(config_multi.host3, config_multi.token3),
+  // new DeliverooApi(config_multi.host4, config_multi.token4),
 ];
 
 /* CREATE MAP DATA */
@@ -39,44 +39,45 @@ clients[0].onMap((width, height, tiles) => {
 function plan(starting_point, goal_point){
   const moves = [];
   var lastPoint = starting_point;
-  while(goal_point[0] != lastPoint[0] && goal_point[1]!= lastPoint[1]){
+  while(goal_point[0] != lastPoint[0] || goal_point[1]!= lastPoint[1]){
     if(lastPoint[0] < goal_point[0]){
-      moves.push("down");
+      moves.push("right");
       lastPoint[0] += 1;
     }
     else if(lastPoint[0] > goal_point[0]){
-      moves.push("up");
+      moves.push("left");
       lastPoint[0] -= 1;
     }
     else if(lastPoint[1] < goal_point[1]){
-      moves.push("right");
+      moves.push("up");
       lastPoint[1] += 1;
     }
     else if(lastPoint[1] > goal_point[1]){
-      moves.push("left");
+      moves.push("down");
       lastPoint[1] -= 1;
     }
-
   }
-  return moves; 
+  return moves;
 
 }
 
 /* CREATE AN AGENT LOOP THAT MAKES THE AGENT WALK LONG THE BORDER*/
+function abs(num){
+  if(num < 0){
+    return -num;
+  }
+  return num;
+}
 
-async function agentLoop(agent, goal_point) {
-  var me = {};
-  await agent.move("right")
-  agent.onYou(you => {
-    you.x = Math.round(you.x);
-    you.y = Math.round(you.y);
-    me = you;
-  });
-  const starting_point = [me.x, me.y];
+async function agentLoop(agent, goal_point, i) {
+  const starting_point = [0, 2];
   console.log("Starting point: " + starting_point);
   
   const moves = plan(starting_point, goal_point);
+  //var time = abs(i-3) * 1000;
   for (let i = 0; i < moves.length; i++) {
+    // random 1-3 sec timer
+    //await timer(time);
     await agent.move(moves[i]);
   } 
 }
@@ -87,5 +88,5 @@ await timer(1000);
 clients.forEach((client, i) => {
   const goal_point = center_spots[i];
   console.log("Goal point: " + goal_point + " for agent " + i);
-  agentLoop(client, goal_point);
+  agentLoop(client, goal_point, i);
 });
