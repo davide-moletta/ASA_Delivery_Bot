@@ -5,9 +5,9 @@ import { divideMatrix } from "./map_utils_playground.js";
 
 const clients = [
   new DeliverooApi(config_multi.host1, config_multi.token1),
-  // new DeliverooApi(config_multi.host2, config_multi.token2),
-  // new DeliverooApi(config_multi.host3, config_multi.token3),
-  // new DeliverooApi(config_multi.host4, config_multi.token4),
+  new DeliverooApi(config_multi.host2, config_multi.token2),
+  new DeliverooApi(config_multi.host3, config_multi.token3),
+  new DeliverooApi(config_multi.host4, config_multi.token4),
 ];
 
 /* CREATE MAP DATA */
@@ -16,7 +16,7 @@ var maxY = 0;
 var mapData;
 var slices_res;
 var center_spots;
-
+clients[0].move("down");
 clients[0].onMap((width, height, tiles) => {
   maxX = width;
   maxY = height;
@@ -36,50 +36,54 @@ clients[0].onMap((width, height, tiles) => {
 
 // const slices_res = divideMatrix(mapData, clients.length);
 
-function plan(starting_point, goal_point){
+function plan(starting_point, goal_point) {
   const moves = [];
   var lastPoint = starting_point;
-  while(goal_point[0] != lastPoint[0] || goal_point[1]!= lastPoint[1]){
-    if(lastPoint[0] < goal_point[0]){
+  while (goal_point[0] != lastPoint[0] || goal_point[1] != lastPoint[1]) {
+    if (lastPoint[0] < goal_point[0]) {
       moves.push("right");
       lastPoint[0] += 1;
-    }
-    else if(lastPoint[0] > goal_point[0]){
+    } else if (lastPoint[0] > goal_point[0]) {
       moves.push("left");
       lastPoint[0] -= 1;
-    }
-    else if(lastPoint[1] < goal_point[1]){
+    } else if (lastPoint[1] < goal_point[1]) {
       moves.push("up");
       lastPoint[1] += 1;
-    }
-    else if(lastPoint[1] > goal_point[1]){
+    } else if (lastPoint[1] > goal_point[1]) {
       moves.push("down");
       lastPoint[1] -= 1;
     }
   }
   return moves;
-
 }
 
 /* CREATE AN AGENT LOOP THAT MAKES THE AGENT WALK LONG THE BORDER*/
-function abs(num){
-  if(num < 0){
+function abs(num) {
+  if (num < 0) {
     return -num;
   }
   return num;
 }
 
 async function agentLoop(agent, goal_point, i) {
-  const starting_point = [0, 2];
-  console.log("Starting point: " + starting_point);
-  
-  const moves = plan(starting_point, goal_point);
-  //var time = abs(i-3) * 1000;
-  for (let i = 0; i < moves.length; i++) {
-    // random 1-3 sec timer
-    //await timer(time);
-    await agent.move(moves[i]);
-  } 
+  await agent.move("right");
+  var starting_point;
+
+  agent.onYou(async (you) => {
+    you.x = Math.round(you.x);
+    you.y = Math.round(you.y);
+    starting_point = [you.x, you.y];
+
+    console.log("Starting point: " + starting_point + " for agent " + i);
+
+    const moves = plan(starting_point, goal_point);
+    var time = abs(i - 3) * 500;
+    for (let i = 0; i < moves.length; i++) {
+      await timer(time);
+      await agent.move(moves[i]);
+    }
+    console.log("Agent " + i + " has reached its goal point: " + goal_point);
+  });
 }
 
 /* GIVE EACH AGENT ITS SLICE OF MAP */
