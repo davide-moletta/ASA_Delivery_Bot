@@ -65,6 +65,7 @@ function abs(num) {
   return num;
 }
 
+// TODO: an agentLoop function with belief, intent, goals, planning etc
 async function agentLoop(agent, goal_point, i) {
   await agent.move("right");
   var starting_point;
