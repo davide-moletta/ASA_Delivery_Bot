@@ -1,9 +1,9 @@
 // CHANGE THIS TO TEST
-const extended = true;
+const extended = false;
 const verbose = true;
-const sizeX = 20;
-const sizeY = 20;
-const agents_num = 4;
+const sizeX = 10;
+const sizeY = 10;
+const agents_num = 3;
 
 function divideMatrix(matrix, n, extended = false, verbose = false) {
   const mapData = matrix.map((arr) => arr.slice());
@@ -125,9 +125,9 @@ export { divideMatrix, getNeighbors };
 
 // divide the matrix in n parts
 
-// const mapData = new Array(sizeX).fill(99).map(() => new Array(sizeY).fill(99));
-// const [center_spots, slices_res] = divideMatrix(mapData, agents_num, extended, verbose);
-// console.log(center_spots);
+const mapData = new Array(sizeX).fill(99).map(() => new Array(sizeY).fill(99));
+const [center_spots, slices_res] = divideMatrix(mapData, agents_num, extended, verbose);
+console.log(center_spots);
 
 
 
