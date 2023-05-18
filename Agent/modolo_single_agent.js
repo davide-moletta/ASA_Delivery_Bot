@@ -245,3 +245,100 @@ class BlindMove extends Plan {
 
 plans.push( new GoPickUp() )
 plans.push( new BlindMove() )
+
+function manhattanHeuristic(position0, position1) {
+    let d1 = Math.abs(position1.x - position0.x);
+    let d2 = Math.abs(position1.y - position0.y);
+
+    return d1 + d2;
+}
+
+function init(currentX, currentY, targetX, targetY) {
+    //making a 2D array
+    for (let i = 0; i < cols; i++) {
+        grid[i] = new Array(rows);
+    }
+
+    for (let i = 0; i < cols; i++) {
+        for (let j = 0; j < rows; j++) {
+            grid[i][j] = new GridPoint(i, j);
+        }
+    }
+
+    for (let i = 0; i < cols; i++) {
+        for (let j = 0; j < rows; j++) {
+            grid[i][j].updateNeighbors(grid);
+        }
+    }
+
+    start = grid[currentX][currentY];
+    end = grid[targetX][targetY];
+
+    openSet.push(start);
+}
+
+function search(currentX, currentY, targetX, targetY) {
+    const path = [];
+    const movemements = [];
+    let openSet = []; //array containing unevaluated grid points
+    let closedSet = []; //array containing completely evaluated grid points
+
+    init(currentX, currentY, targetX, targetY);
+
+    while (openSet.length > 0) {
+        //assumption lowest index is the first one to begin with
+        let lowestIndex = 0;
+        for (let i = 0; i < openSet.length; i++) {
+            if (openSet[i].f < openSet[lowestIndex].f) {
+                lowestIndex = i;
+            }
+        }
+        let current = openSet[lowestIndex];
+
+        if (current === end) {
+            let temp = current;
+            path.push(temp);
+            movemements.push(temp.movement);
+            while (temp.parent) {
+                path.push(temp.parent);
+                movemements.push(temp.parent.movement);
+                temp = temp.parent;
+            }
+
+            movemements.pop();
+            return movemements.reverse();
+        }
+
+        //remove current from openSet
+        openSet.splice(lowestIndex, 1);
+        //add current to closedSet
+        closedSet.push(current);
+
+        let neighbors = current.neighbors;
+        let neighborsMovement = current.neighborsMovement;
+
+        for (let i = 0; i < neighbors.length; i++) {
+            let neighbor = neighbors[i];
+            let movement = neighborsMovement[i];
+
+            if (!closedSet.includes(neighbor)) {
+                let possibleG = current.g + 1;
+
+                if (!openSet.includes(neighbor)) {
+                    openSet.push(neighbor);
+                } else if (possibleG >= neighbor.g) {
+                    continue;
+                }
+
+                neighbor.g = possibleG;
+                neighbor.h = manhattanHeuristic(neighbor, end);
+                neighbor.f = neighbor.g + neighbor.h;
+                neighbor.parent = current;
+                neighbor.movement = movement;
+            }
+        }
+    }
+
+    //no solution by default
+    return [];
+}
