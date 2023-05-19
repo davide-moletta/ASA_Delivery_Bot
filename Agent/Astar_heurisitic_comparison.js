@@ -123,7 +123,7 @@ function init(currentX, currentY, targetX, targetY) {
     }
 
     for (let i = 0; i < cols; i++) {
-        for (let j = 0; j < rows; j++) {
+        for (let j = 0; j < rows; j++) { 
             grid[i][j].updateNeighbors(grid);
         }
     }
