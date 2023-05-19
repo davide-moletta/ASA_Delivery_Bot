@@ -10,161 +10,182 @@ let rows = 0;
 let maxX = 0;
 let maxY = 0;
 var mapData; // the map as a 2D array
-
+const delivery_points = [];
 
 client.onMap((width, height, tiles) => {
-    maxX = width;
-    maxY = height;
+  maxX = width;
+  maxY = height;
 
-    mapData = new Array(maxX).fill(0).map(() => new Array(maxY).fill(0));
+  mapData = new Array(maxX).fill(0).map(() => new Array(maxY).fill(0));
 
-    tiles.forEach((tile) => {
-        mapData[tile.x][tile.y] = tile.delivery ? 2 : 1;
-    });
-
-    console.log(mapData);
+  tiles.forEach((tile) => {
+    mapData[tile.x][tile.y] = tile.delivery ? 2 : 1;
+    if (tile.delivery) {
+      delivery_points.push([tile.x, tile.y]);
+    }
+  });
 });
 setTimeout(() => {}, 1000);
 
-class GridPoint {
-    constructor(x, y) {
-        this.x = x; //x location of the grid point
-        this.y = y; //y location of the grid point
-        this.f = 0; //total cost function
-        this.g = 0; //cost function from start to the current grid point
-        this.h = 0; //heuristic estimated cost function from current grid point to the goal
-        this.neighbors = []; // neighbors of the current grid point
-        this.neighborsMovement = []; // movement to get to the neighbors of the current grid point
-        this.parent = undefined; // immediate source of the current grid point
-        this.movement = undefined; // movement to get to the current grid point
-
-
-        // update neighbors array for a given grid point
-        this.updateNeighbors = function (grid) {
-            let i = this.x;
-            let j = this.y;
-            if (i < cols - 1 && mapData[i + 1][j] != 0) {
-                this.neighbors.push(grid[i + 1][j]);
-                this.neighborsMovement.push("right");
-            }
-            if (i > 0 && mapData[i - 1][j] != 0) {
-                this.neighbors.push(grid[i - 1][j]);
-                this.neighborsMovement.push("left");
-            }
-            if (j < rows - 1 && mapData[i][j + 1] != 0) {
-                this.neighbors.push(grid[i][j + 1]);
-                this.neighborsMovement.push("up");
-            }
-            if (j > 0 && mapData[i][j - 1] != 0) {
-                this.neighbors.push(grid[i][j - 1]);
-                this.neighborsMovement.push("down");
-            }
-        };
+function findDeliveryPoint(my_x, my_y) {
+  let closestDeliveryPoint = { x: 0, y: 0 };
+  let closestDistance = 1000000;
+  delivery_points.forEach((point) => {
+    const dist = distance({ x: my_x, y: my_y }, { x: point[0], y: point[1] });
+    if (dist < closestDistance) {
+      closestDistance = dist;
+      closestDeliveryPoint = point;
     }
+  });
+  return closestDeliveryPoint;
+}
+class GridPoint {
+  constructor(x, y) {
+    this.x = x; //x location of the grid point
+    this.y = y; //y location of the grid point
+    this.f = 0; //total cost function
+    this.g = 0; //cost function from start to the current grid point
+    this.h = 0; //heuristic estimated cost function from current grid point to the goal
+    this.neighbors = []; // neighbors of the current grid point
+    this.neighborsMovement = []; // movement to get to the neighbors of the current grid point
+    this.parent = undefined; // immediate source of the current grid point
+    this.movement = undefined; // movement to get to the current grid point
+
+    // update neighbors array for a given grid point
+    this.updateNeighbors = function (grid) {
+      let i = this.x;
+      let j = this.y;
+      if (i < cols - 1 && mapData[i + 1][j] != 0) {
+        this.neighbors.push(grid[i + 1][j]);
+        this.neighborsMovement.push("right");
+      }
+      if (i > 0 && mapData[i - 1][j] != 0) {
+        this.neighbors.push(grid[i - 1][j]);
+        this.neighborsMovement.push("left");
+      }
+      if (j < rows - 1 && mapData[i][j + 1] != 0) {
+        this.neighbors.push(grid[i][j + 1]);
+        this.neighborsMovement.push("up");
+      }
+      if (j > 0 && mapData[i][j - 1] != 0) {
+        this.neighbors.push(grid[i][j - 1]);
+        this.neighborsMovement.push("down");
+      }
+    };
+  }
 }
 
 function manhattanHeuristic(position0, position1) {
-    let d1 = Math.abs(position1.x - position0.x);
-    let d2 = Math.abs(position1.y - position0.y);
+  let d1 = Math.abs(position1.x - position0.x);
+  let d2 = Math.abs(position1.y - position0.y);
 
-    return d1 + d2;
+  return d1 + d2;
 }
 
 function init(currentX, currentY, targetX, targetY, grid, openSet, start, end) {
-    //making a 2D array
-    for (let i = 0; i < cols; i++) {
-        grid[i] = new Array(rows);
+  //making a 2D array
+  for (let i = 0; i < cols; i++) {
+    grid[i] = new Array(rows);
+  }
+
+  for (let i = 0; i < cols; i++) {
+    for (let j = 0; j < rows; j++) {
+      grid[i][j] = new GridPoint(i, j);
     }
+  }
 
-    for (let i = 0; i < cols; i++) {
-        for (let j = 0; j < rows; j++) {
-            grid[i][j] = new GridPoint(i, j);
-        }
+  for (let i = 0; i < cols; i++) {
+    for (let j = 0; j < rows; j++) {
+      grid[i][j].updateNeighbors(grid);
     }
+  }
 
-    for (let i = 0; i < cols; i++) {
-        for (let j = 0; j < rows; j++) {
-            grid[i][j].updateNeighbors(grid);
-        }
-    }
+  start = grid[currentX][currentY];
+  end = grid[targetX][targetY];
 
-    start = grid[currentX][currentY];
-    end = grid[targetX][targetY];
+  openSet.push(start);
 
-    openSet.push(start);
-
-    return [start, end]
+  return [start, end];
 }
 
 function search(currentX, currentY, targetX, targetY) {
-    const path = [];
-    const movemements = [];
-    let openSet = []; //array containing unevaluated grid points
-    let closedSet = []; //array containing completely evaluated grid points
-    let grid = new Array(maxX);
-    cols = maxX;
-    rows = maxY;
-    let start;
-    let end;
-    
-    [start, end]= init(currentX, currentY, targetX, targetY, grid, openSet, start, end);
+  const path = [];
+  const movemements = [];
+  let openSet = []; //array containing unevaluated grid points
+  let closedSet = []; //array containing completely evaluated grid points
+  let grid = new Array(maxX);
+  cols = maxX;
+  rows = maxY;
+  let start;
+  let end;
 
-    while (openSet.length > 0) {
-        //assumption lowest index is the first one to begin with
-        let lowestIndex = 0;
-        for (let i = 0; i < openSet.length; i++) {
-            if (openSet[i].f < openSet[lowestIndex].f) {
-                lowestIndex = i;
-            }
-        }
-        let current = openSet[lowestIndex];
+  [start, end] = init(
+    currentX,
+    currentY,
+    targetX,
+    targetY,
+    grid,
+    openSet,
+    start,
+    end
+  );
 
-        if (current === end) {
-            let temp = current;
-            path.push(temp);
-            movemements.push(temp.movement);
-            while (temp.parent) {
-                path.push(temp.parent);
-                movemements.push(temp.parent.movement);
-                temp = temp.parent;
-            }
+  while (openSet.length > 0) {
+    //assumption lowest index is the first one to begin with
+    let lowestIndex = 0;
+    for (let i = 0; i < openSet.length; i++) {
+      if (openSet[i].f < openSet[lowestIndex].f) {
+        lowestIndex = i;
+      }
+    }
+    let current = openSet[lowestIndex];
 
-            movemements.pop();
-            return movemements.reverse();
-        }
+    if (current === end) {
+      let temp = current;
+      path.push(temp);
+      movemements.push(temp.movement);
+      while (temp.parent) {
+        path.push(temp.parent);
+        movemements.push(temp.parent.movement);
+        temp = temp.parent;
+      }
 
-        //remove current from openSet
-        openSet.splice(lowestIndex, 1);
-        //add current to closedSet
-        closedSet.push(current);
-
-        let neighbors = current.neighbors;
-        let neighborsMovement = current.neighborsMovement;
-
-        for (let i = 0; i < neighbors.length; i++) {
-            let neighbor = neighbors[i];
-            let movement = neighborsMovement[i];
-
-            if (!closedSet.includes(neighbor)) {
-                let possibleG = current.g + 1;
-
-                if (!openSet.includes(neighbor)) {
-                    openSet.push(neighbor);
-                } else if (possibleG >= neighbor.g) {
-                    continue;
-                }
-
-                neighbor.g = possibleG;
-                neighbor.h = manhattanHeuristic(neighbor, end);
-                neighbor.f = neighbor.g + neighbor.h;
-                neighbor.parent = current;
-                neighbor.movement = movement;
-            }
-        }
+      movemements.pop();
+      return movemements.reverse();
     }
 
-    //no solution by default
-    return [];
+    //remove current from openSet
+    openSet.splice(lowestIndex, 1);
+    //add current to closedSet
+    closedSet.push(current);
+
+    let neighbors = current.neighbors;
+    let neighborsMovement = current.neighborsMovement;
+
+    for (let i = 0; i < neighbors.length; i++) {
+      let neighbor = neighbors[i];
+      let movement = neighborsMovement[i];
+
+      if (!closedSet.includes(neighbor)) {
+        let possibleG = current.g + 1;
+
+        if (!openSet.includes(neighbor)) {
+          openSet.push(neighbor);
+        } else if (possibleG >= neighbor.g) {
+          continue;
+        }
+
+        neighbor.g = possibleG;
+        neighbor.h = manhattanHeuristic(neighbor, end);
+        neighbor.f = neighbor.g + neighbor.h;
+        neighbor.parent = current;
+        neighbor.movement = movement;
+      }
+    }
+  }
+
+  //no solution by default
+  return [];
 }
 
 function distance({ x: x1, y: y1 }, { x: x2, y: y2 }) {
@@ -205,6 +226,15 @@ function agentLoop() {
     if (!parcel.carriedBy)
       options.push({ desire: "go_pick_up", args: [parcel] });
 
+  for (const parcel of parcels.values()) {
+    if (parcel.carriedBy) {
+      console.log(me.x, me.y)
+      let deliver = findDeliveryPoint(me.x, me.y);
+      console.log(deliver);
+      options.push({ desire: "go_put_down", args: [deliver] });
+    }
+  }
+
   /**
    * Select best intention
    */
@@ -218,6 +248,13 @@ function agentLoop() {
       nearest = distance(option.args[0], me);
     }
   }
+
+//   for (const parcel of parcels.values()) {
+//     if (parcel.carriedBy) {
+//       // options.push({ desire: "go_put_down", args: [parcel] });
+//       best_option = { desire: "go_put_down", args: [parcel] };
+//     }
+//   }
 
   /**
    * Revise/queue intention
@@ -373,19 +410,36 @@ class GoPickUp extends Plan {
   async execute({ x, y }) {
     await this.subIntention("go_to", { x, y });
     await client.pickup();
+
+    // now go put down to deliver
+    const deliver = findDeliveryPoint(x, y);
+    
+    const sub_intentionx = new Intention("go_put_down", { x: deliver[0], y: deliver[1] });
+    await sub_intentionx.achieve();
+    
   }
 }
 
-async function moveToTarget (movs){
-    var movemementsDone = [movs.length];
+class GoPutDown extends Plan {
+  isApplicableTo(desire) {
+    return desire == "go_put_down";
+  }
 
-    movemementsDone[0] = await client.move(movs[0]);
-    for (var i = 1; i < movs.length; i++) {
-      if (movemementsDone[i - 1]) {
-        movemementsDone[i] = await client.move(movs[i]);
-      }
+  async execute({ x, y }) {
+    await this.subIntention("go_to", { x, y });
+    await client.putdown();
+  }
+}
+
+async function moveToTarget(movs) {
+  var movemementsDone = [movs.length];
+
+  movemementsDone[0] = await client.move(movs[0]);
+  for (var i = 1; i < movs.length; i++) {
+    if (movemementsDone[i - 1]) {
+      movemementsDone[i] = await client.move(movs[i]);
     }
-
+  }
 }
 
 class BlindMove extends Plan {
@@ -394,9 +448,10 @@ class BlindMove extends Plan {
   }
 
   async execute({ x, y }) {
-        await moveToTarget(search(me.x, me.y, x, y));
+    await moveToTarget(search(me.x, me.y, x, y));
   }
 }
 
 plans.push(new GoPickUp());
 plans.push(new BlindMove());
+plans.push(new GoPutDown());
