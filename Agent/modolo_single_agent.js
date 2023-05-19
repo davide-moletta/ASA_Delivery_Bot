@@ -3,6 +3,149 @@ import { DeliverooApi, timer } from "@unitn-asa/deliveroo-js-client";
 // import map_utils_playground.js functions
 import { divideMatrix } from "./map_utils_playground.js";
 
+let cols = 0;
+let rows = 0;
+
+class GridPoint {
+    constructor(x, y) {
+        this.x = x; //x location of the grid point
+        this.y = y; //y location of the grid point
+        this.f = 0; //total cost function
+        this.g = 0; //cost function from start to the current grid point
+        this.h = 0; //heuristic estimated cost function from current grid point to the goal
+        this.neighbors = []; // neighbors of the current grid point
+        this.neighborsMovement = []; // movement to get to the neighbors of the current grid point
+        this.parent = undefined; // immediate source of the current grid point
+        this.movement = undefined; // movement to get to the current grid point
+
+
+        // update neighbors array for a given grid point
+        this.updateNeighbors = function (grid) {
+            let i = this.x;
+            let j = this.y;
+            if (i < cols - 1 && mapData[i + 1][j] != 0) {
+                this.neighbors.push(grid[i + 1][j]);
+                this.neighborsMovement.push("right");
+            }
+            if (i > 0 && mapData[i - 1][j] != 0) {
+                this.neighbors.push(grid[i - 1][j]);
+                this.neighborsMovement.push("left");
+            }
+            if (j < rows - 1 && mapData[i][j + 1] != 0) {
+                this.neighbors.push(grid[i][j + 1]);
+                this.neighborsMovement.push("up");
+            }
+            if (j > 0 && mapData[i][j - 1] != 0) {
+                this.neighbors.push(grid[i][j - 1]);
+                this.neighborsMovement.push("down");
+            }
+        };
+    }
+}
+
+function manhattanHeuristic(position0, position1) {
+    let d1 = Math.abs(position1.x - position0.x);
+    let d2 = Math.abs(position1.y - position0.y);
+
+    return d1 + d2;
+}
+
+function init(currentX, currentY, targetX, targetY, grid, openSet, start, end) {
+    //making a 2D array
+    for (let i = 0; i < cols; i++) {
+        grid[i] = new Array(rows);
+    }
+
+    for (let i = 0; i < cols; i++) {
+        for (let j = 0; j < rows; j++) {
+            grid[i][j] = new GridPoint(i, j);
+        }
+    }
+
+    for (let i = 0; i < cols; i++) {
+        for (let j = 0; j < rows; j++) {
+            grid[i][j].updateNeighbors(grid);
+        }
+    }
+
+    start = grid[currentX][currentY];
+    end = grid[targetX][targetY];
+
+    openSet.push(start);
+
+    return [start, end]
+}
+
+function search(currentX, currentY, targetX, targetY) {
+    const path = [];
+    const movemements = [];
+    let openSet = []; //array containing unevaluated grid points
+    let closedSet = []; //array containing completely evaluated grid points
+    let grid = new Array(maxX);
+    cols = maxX;
+    rows = maxY;
+    let start;
+    let end;
+    
+    [start, end]= init(currentX, currentY, targetX, targetY, grid, openSet, start, end);
+
+    while (openSet.length > 0) {
+        //assumption lowest index is the first one to begin with
+        let lowestIndex = 0;
+        for (let i = 0; i < openSet.length; i++) {
+            if (openSet[i].f < openSet[lowestIndex].f) {
+                lowestIndex = i;
+            }
+        }
+        let current = openSet[lowestIndex];
+
+        if (current === end) {
+            let temp = current;
+            path.push(temp);
+            movemements.push(temp.movement);
+            while (temp.parent) {
+                path.push(temp.parent);
+                movemements.push(temp.parent.movement);
+                temp = temp.parent;
+            }
+
+            movemements.pop();
+            return movemements.reverse();
+        }
+
+        //remove current from openSet
+        openSet.splice(lowestIndex, 1);
+        //add current to closedSet
+        closedSet.push(current);
+
+        let neighbors = current.neighbors;
+        let neighborsMovement = current.neighborsMovement;
+
+        for (let i = 0; i < neighbors.length; i++) {
+            let neighbor = neighbors[i];
+            let movement = neighborsMovement[i];
+
+            if (!closedSet.includes(neighbor)) {
+                let possibleG = current.g + 1;
+
+                if (!openSet.includes(neighbor)) {
+                    openSet.push(neighbor);
+                } else if (possibleG >= neighbor.g) {
+                    continue;
+                }
+
+                neighbor.g = possibleG;
+                neighbor.h = manhattanHeuristic(neighbor, end);
+                neighbor.f = neighbor.g + neighbor.h;
+                neighbor.parent = current;
+                neighbor.movement = movement;
+            }
+        }
+    }
+
+    //no solution by default
+    return [];
+}
 const client = new DeliverooApi(config_multi.host1, config_multi.token1)
 const i = 0;
 /* CREATE MAP DATA */
@@ -11,6 +154,7 @@ var maxY = 0;
 var mapData;
 var slices_res;
 var center_spots;
+
 client.onMap((width, height, tiles) => {
   maxX = width;
   maxY = height;
@@ -21,21 +165,22 @@ client.onMap((width, height, tiles) => {
     mapData[tile.x][tile.y] = tile.delivery ? 2 : 1;
   });
 
-  console.table(mapData);
-  [center_spots, slices_res] = divideMatrix(mapData, 1);
+  //console.table(mapData);
+  [center_spots, slices_res] = divideMatrix(mapData, 1, false, false);
   console.log("Center spots: " + center_spots);
 });
 
 await timer(500);
 
 const parcels = new Map();
-client.onParcelsSensing( async ( perceived_parcels ) => {
-    for (const p of perceived_parcels) {
-      // check if parcel is in the slice
-      if ([p.x, p.y] in slices_res[i]) {
-        parcels.set( p.id, p)
-    }
-} });
+// client.onParcelsSensing( async ( perceived_parcels ) => {
+//     for (const p of perceived_parcels) {
+//       // check if parcel is in the slice
+//       if ([p.x, p.y] in slices_res[i]) {
+//         parcels.set( p.id, p)
+//         console.log("Parcel " + p.id + " added to the list");
+//     }
+// } });
 
 function distance( {x:x1, y:y1}, {x:x2, y:y2}) {
   const dx = Math.abs( Math.round(x1) - Math.round(x2) )
@@ -47,6 +192,7 @@ function parcelLoop() {
   /**
    * Options
    */
+  console.log("Parcel loop");
   const options = []
   for (const parcel of parcels.values())
       if ( ! parcel.carriedBy )
@@ -200,145 +346,20 @@ class BlindMove extends Plan {
     }
 
     async execute ( {x, y} ) {        
-        while ( me.x != x || me.y != y ) {
+        // Astar call with search
+        console.log("Blind move to " + x + " " + y);
+        let movs =  search(me.x, me.y, 6, 6)
+        var movemementsDone = [movs.length];    
 
-            let status_x = undefined;
-            let status_y = undefined;
-            
-            console.log('me', me, 'xy', x, y);
-
-            if ( x > me.x )
-                status_x = await client.move('right')
-                // status_x = await this.subIntention( 'go_to', {x: me.x+1, y: me.y} );
-            else if ( x < me.x )
-                status_x = await client.move('left')
-                // status_x = await this.subIntention( 'go_to', {x: me.x-1, y: me.y} );
-
-            if (status_x) {
-                me.x = status_x.x;
-                me.y = status_x.y;
+        movemementsDone[0] = await client.move(movs[0]);
+        for (var i = 1; i < movs.length; i++) {
+            if (movemementsDone[i - 1]) {
+                movemementsDone[i] = await client.move(movs[i]);
             }
-
-            if ( y > me.y )
-                status_y = await client.move('up')
-                // status_x = await this.subIntention( 'go_to', {x: me.x, y: me.y+1} );
-            else if ( y < me.y )
-                status_y = await client.move('down')
-                // status_x = await this.subIntention( 'go_to', {x: me.x, y: me.y-1} );
-
-            if (status_y) {
-                me.x = status_y.x;
-                me.y = status_y.y;
-            }
-            
-            if ( ! status_x && ! status_y) {
-                console.log('stucked')
-                break;
-            } else if ( me.x == x && me.y == y ) {
-                console.log('target reached')
-            }
-            
-        }
+    }
 
     }
 }
 
 plans.push( new GoPickUp() )
 plans.push( new BlindMove() )
-
-function manhattanHeuristic(position0, position1) {
-    let d1 = Math.abs(position1.x - position0.x);
-    let d2 = Math.abs(position1.y - position0.y);
-
-    return d1 + d2;
-}
-
-function init(currentX, currentY, targetX, targetY) {
-    //making a 2D array
-    for (let i = 0; i < cols; i++) {
-        grid[i] = new Array(rows);
-    }
-
-    for (let i = 0; i < cols; i++) {
-        for (let j = 0; j < rows; j++) {
-            grid[i][j] = new GridPoint(i, j);
-        }
-    }
-
-    for (let i = 0; i < cols; i++) {
-        for (let j = 0; j < rows; j++) {
-            grid[i][j].updateNeighbors(grid);
-        }
-    }
-
-    start = grid[currentX][currentY];
-    end = grid[targetX][targetY];
-
-    openSet.push(start);
-}
-
-function search(currentX, currentY, targetX, targetY) {
-    const path = [];
-    const movemements = [];
-    let openSet = []; //array containing unevaluated grid points
-    let closedSet = []; //array containing completely evaluated grid points
-
-    init(currentX, currentY, targetX, targetY);
-
-    while (openSet.length > 0) {
-        //assumption lowest index is the first one to begin with
-        let lowestIndex = 0;
-        for (let i = 0; i < openSet.length; i++) {
-            if (openSet[i].f < openSet[lowestIndex].f) {
-                lowestIndex = i;
-            }
-        }
-        let current = openSet[lowestIndex];
-
-        if (current === end) {
-            let temp = current;
-            path.push(temp);
-            movemements.push(temp.movement);
-            while (temp.parent) {
-                path.push(temp.parent);
-                movemements.push(temp.parent.movement);
-                temp = temp.parent;
-            }
-
-            movemements.pop();
-            return movemements.reverse();
-        }
-
-        //remove current from openSet
-        openSet.splice(lowestIndex, 1);
-        //add current to closedSet
-        closedSet.push(current);
-
-        let neighbors = current.neighbors;
-        let neighborsMovement = current.neighborsMovement;
-
-        for (let i = 0; i < neighbors.length; i++) {
-            let neighbor = neighbors[i];
-            let movement = neighborsMovement[i];
-
-            if (!closedSet.includes(neighbor)) {
-                let possibleG = current.g + 1;
-
-                if (!openSet.includes(neighbor)) {
-                    openSet.push(neighbor);
-                } else if (possibleG >= neighbor.g) {
-                    continue;
-                }
-
-                neighbor.g = possibleG;
-                neighbor.h = manhattanHeuristic(neighbor, end);
-                neighbor.f = neighbor.g + neighbor.h;
-                neighbor.parent = current;
-                neighbor.movement = movement;
-            }
-        }
-    }
-
-    //no solution by default
-    return [];
-}
