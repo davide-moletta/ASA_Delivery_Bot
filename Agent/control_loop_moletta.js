@@ -1,8 +1,8 @@
+//try to implement control loop
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 
 const client = new DeliverooApi('http://localhost:8080/?name=Cannarsi',
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjA5ZDBiMDA0NDdlIiwibmFtZSI6IkNhbm5hcnNpIiwiaWF0IjoxNjgyMDk4NTI0fQ.juYE2bZS6jm8ghTqrpfheFSVSjpIz_C1s-bPIj4LN1w')
-
 
 let cols = 0;
 let rows = 0;
@@ -11,6 +11,8 @@ let maxY = 0;
 var mapData;
 const delivery_points = [];
 
+//BELIEFS
+//As beliefs I have the position of the parcels and the position of the agents and the map
 client.onMap((width, height, tiles) => {
     maxX = width;
     maxY = height;
@@ -26,10 +28,6 @@ client.onMap((width, height, tiles) => {
 });
 setTimeout(() => { }, 1000);
 
-/**
- * Belief revision function
- */
-
 const me = {};
 client.onYou(({ id, name, x, y, score }) => {
     me.id = id
@@ -38,6 +36,7 @@ client.onYou(({ id, name, x, y, score }) => {
     me.y = y
     me.score = score
 })
+//Can create a map of my parcels so I know what I'm carrying
 const parcels = new Map();
 client.onParcelsSensing(async (perceived_parcels) => {
     for (const p of perceived_parcels) {
@@ -194,21 +193,51 @@ function search(currentX, currentY, targetX, targetY) {
     return [];
 }
 
-function averageScore({ x: x1, y: y1 }, { x: x2, y: y2 }, action, parcels) {
 
+//Intentions
+//Possible intentions are: go_pick_up, go_to, go_deliver
+
+function findDeliveryPoint(my_x, my_y) {
+    let closestDeliveryPoint = { x: 0, y: 0 };
+    let closestDistance = 1000000
+    delivery_points.forEach((point) => {
+        const dist = Math.abs(Math.round(my_x) - Math.round(point[0])) + Math.abs(Math.round(my_y) - Math.round(point[1]));
+        if (dist < closestDistance) {
+            closestDistance = dist;
+            closestDeliveryPoint = { x: point[0], y: point[1] };
+        }
+    });
+    return closestDeliveryPoint;
+}
+
+//List possible options
+function checkOptions() {
+    const options = []
+    for (const parcel of parcels.values()) {
+        if (!parcel.carriedBy) {
+            let pickup = { x: parcel.x, y: parcel.y };
+            options.push({ desire: 'go_pick_up', args: [pickup] });
+        } else if (parcel.carriedBy == me.id) {
+            let delivery = findDeliveryPoint(me.x, me.y);
+            options.push({ desire: 'go_put_down', args: [delivery] });
+        }
+    }
+    revisor.queue(options);
+}
+
+
+function averageScore({ x: targetX, y: targetY }, action) {
     var actualScore = 0;
     var parcelsToDeliver = 0;
     var parcelValue = 0;
-    const dx = Math.abs(Math.round(x1) - Math.round(x2))
-    const dy = Math.abs(Math.round(y1) - Math.round(y2))
-    var distance = dx + dy;
+    var distance = Math.abs(Math.round(targetX) - Math.round(me.x)) + Math.abs(Math.round(targetY) - Math.round(me.y));
 
     for (const parcel of parcels.values()) {
         if (parcel.carriedBy == me.id) {
             actualScore += parcel.reward;
             parcelsToDeliver++;
         }
-        if (parcel.x == x1 && parcel.y == y1) {
+        if (parcel.x == targetX && parcel.y == targetY) {
             parcelValue = parcel.reward;
         }
     }
@@ -219,115 +248,64 @@ function averageScore({ x: x1, y: y1 }, { x: x2, y: y2 }, action, parcels) {
         //Plus the value of the target parcel - the distance to calculate the value of the parcel once I reach it
         return (actualScore + parcelValue) - ((parcelsToDeliver + 1) * distance);
     }
-    if (action == 'go_deliver') {
+    if (action == 'go_put_down') {
         if (parcelsToDeliver == 0) {
-            return 0;
+            return MIN_VALUE;
         }
-
         //The possible score is the actual score of the parcels that I'm carrying - the distance from me to the closest delivery point * the number of parcels that I'm carrying
         //This is to calculate the average score that I can have once i reach the delivery point
         return actualScore - (parcelsToDeliver * distance);
     }
 }
 
-function distance({ x: x1, y: y1 }, { x: x2, y: y2 }) {
-    const dx = Math.abs(Math.round(x1) - Math.round(x2));
-    const dy = Math.abs(Math.round(y1) - Math.round(y2));
-    return dx + dy;
-}
+//Intention revision to find the best action
+class Revisor {
 
-function findDeliveryPoint(my_x, my_y) {
-    let closestDeliveryPoint = { x: 0, y: 0 };
-    let closestDistance = 1000000;
-    delivery_points.forEach((point) => {
-        const dist = distance({ x: my_x, y: my_y }, { x: point[0], y: point[1] });
-        if (dist < closestDistance) {
-            closestDistance = dist;
-            closestDeliveryPoint = {x: point[0], y: point[1]};
-        }
-    });
-    return closestDeliveryPoint;
-}
+    //Will be used to stop plans if a new intention is added with higher score
+    //currentIntention;
+    //nextIntention;
+    //noStarted = true;
+    //currentScore;
 
-/**
- * BDI loop
- */
+    //Among all options choose the one with the highest possible reward and executes it
+    async queue(options) {
+        let bestOption;
+        let bestScore = Number.MIN_VALUE;
 
-async function agentLoop() {
-
-    /**
-     * Options
-     */
-    const options = []
-    for (const parcel of parcels.values())
-        if (!parcel.carriedBy) {
-            //push intention to go pick up
-            options.push({ desire: 'go_pick_up', args: [parcel] });
-        } else if (parcel.carriedBy == me.id) {
-            //find closest delivery point
-            let deliver = findDeliveryPoint(me.x, me.y);
-            //push intention to go deliver
-            options.push({ desire: 'go_deliver', args: [deliver] });
-        }
-
-    /**
-     * Select best intention
-     */
-    let bestOption;
-    let bestScore = Number.MIN_VALUE;
-    for (const option of options) {
-        let currentInt = option.desire
-        let currentScore = averageScore(option.args[0], me, currentInt, parcels)
-        if (currentScore > bestScore) {
-            bestOption = option
-            bestScore = currentScore
-        }
-    }
-    /**
-     * Revise/queue intention 
-     */
-
-    if (bestOption)
-        myAgent.queue(bestOption.desire, ...bestOption.args);
-}
-client.onParcelsSensing(agentLoop)
-
-/**
- * Intention revision / execution loop
- */
-class Agent {
-
-    intentionQueue = new Array();
-
-    async intentionLoop() {
-        while (true) {
-            const intention = this.intentionQueue.shift();
-            if (intention){
-                await intention.achieve();
+        for (const option of options) {
+            let currentIntention = option.desire
+            let currentScore = averageScore(option.args[0], currentIntention)
+            if (currentScore > bestScore) {
+                bestOption = option
+                bestScore = currentScore
             }
+        }
+
+        let currentIntention = new Intention(bestOption.desire, ...bestOption.args);
+
+        await currentIntention.achieve();
+        await new Promise(res => setImmediate(res));
+
+        /*if (this.noStarted) { 
+            this.currentIntention = new Intention(bestOption.desire, ...bestOption.args);
+            this.noStarted = false;
+
+            await this.currentIntention.achieve();
             await new Promise(res => setImmediate(res));
         }
-    }
 
-    async queue(desire, ...args) {
-        const last = this.intentionQueue.at(this.intentionQueue.length - 1);
-        const current = new Intention(desire, ...args)
-        this.intentionQueue.push(current);
-    }
-
-    async stop() {
-        console.log('stop agent queued intentions');
-        for (const intention of this.intentionQueue) {
-            intention.stop();
+        this.nextIntention = new Intention(bestOption.desire, ...bestOption.args);
+        while (!this.currentIntention.resolve) {
+            setTimeout(() => {console.log("action still running")}, 1000);
         }
+        this.currentIntention = this.nextIntention;
+        await this.currentIntention.achieve();
+        await new Promise(res => setImmediate(res));*/
     }
-
 }
-const myAgent = new Agent();
-myAgent.intentionLoop();
-/**
- * Intention
- */
+const revisor = new Revisor();
+
+//Intention
 class Intention extends Promise {
 
     #current_plan;
@@ -368,6 +346,7 @@ class Intention extends Promise {
                     const plan_res = await plan.execute(...this.#args);
                     this.#resolve(plan_res);
                     console.log('plan', plan, 'succesfully achieved intention', this.#desire, ...this.#args, 'with result', plan_res);
+                    checkOptions();
                     return plan_res
                 } catch (error) {
                     console.log('plan', plan, 'failed while trying to achieve intention', this.#desire, ...this.#args, 'with error', error);
@@ -382,9 +361,7 @@ class Intention extends Promise {
 
 }
 
-/**
- * Plan library
- */
+//Plans
 const plans = [];
 
 class Plan {
@@ -418,17 +395,16 @@ class GoPickUp extends Plan {
     }
 }
 
-class GoDeliver extends Plan {
+class GoPutDown extends Plan {
 
     isApplicableTo(desire) {
-        return desire == 'go_deliver';
+        return desire == 'go_put_down';
     }
 
     async execute({ x, y }) {
         await this.subIntention('go_to', { x, y });
         await client.putdown()
     }
-
 }
 
 
@@ -444,7 +420,7 @@ async function moveToTarget(movs) {
 }
 
 
-class ReachPoint extends Plan {
+class Reach extends Plan {
 
     isApplicableTo(desire) {
         return desire == 'go_to';
@@ -455,6 +431,13 @@ class ReachPoint extends Plan {
     }
 }
 
-plans.push(new GoDeliver())
+plans.push(new GoPutDown())
 plans.push(new GoPickUp())
-plans.push(new ReachPoint())
+plans.push(new Reach())
+
+var once = true;
+
+if(once){
+    client.onParcelsSensing(checkOptions);
+    once = false;
+}
