@@ -9,7 +9,7 @@ Project for the "Autonomous Software Agents" course in UNITN a.y. 2022-2023
 
 ## Roadmap
 
-- [ ] Single agent with random movement until sensing a Parcel and A* to deliver
+- [x] Single agent with random movement until sensing a Parcel and A* to deliver
 
 - [ ] Single agent with planning
 
