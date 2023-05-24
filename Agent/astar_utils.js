@@ -5,7 +5,7 @@ function findDeliveryPoint(my_x, my_y, delivery_points) {
     const dist = distance({ x: my_x, y: my_y }, { x: point[0], y: point[1] });
     if (dist < closestDistance) {
       closestDistance = dist;
-      closestDeliveryPoint = point;
+      closestDeliveryPoint = { x: point[0], y: point[1] };
     }
   });
   return closestDeliveryPoint;

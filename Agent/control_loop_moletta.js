@@ -224,6 +224,7 @@ function checkOptions() {
     }
     revisor.queue(options);
 }
+client.onParcelsSensing(checkOptions);
 
 
 function averageScore({ x: targetX, y: targetY }, action) {
@@ -285,22 +286,6 @@ class Revisor {
 
         await currentIntention.achieve();
         await new Promise(res => setImmediate(res));
-
-        /*if (this.noStarted) { 
-            this.currentIntention = new Intention(bestOption.desire, ...bestOption.args);
-            this.noStarted = false;
-
-            await this.currentIntention.achieve();
-            await new Promise(res => setImmediate(res));
-        }
-
-        this.nextIntention = new Intention(bestOption.desire, ...bestOption.args);
-        while (!this.currentIntention.resolve) {
-            setTimeout(() => {console.log("action still running")}, 1000);
-        }
-        this.currentIntention = this.nextIntention;
-        await this.currentIntention.achieve();
-        await new Promise(res => setImmediate(res));*/
     }
 }
 const revisor = new Revisor();
@@ -434,10 +419,3 @@ class Reach extends Plan {
 plans.push(new GoPutDown())
 plans.push(new GoPickUp())
 plans.push(new Reach())
-
-var once = true;
-
-if(once){
-    client.onParcelsSensing(checkOptions);
-    once = false;
-}
