@@ -86,7 +86,7 @@ function averageScore({ x: targetX, y: targetY }, action) {
     }
     //The possible score is the actual score of the parcels that I'm carrying - the distance from me to the closest delivery point * the number of parcels that I'm carrying
     //This is to calculate the average score that I can have once i reach the delivery point
-    return actualScore - (parcelsToDeliver * distance);
+    return actualScore - (parcelsToDeliver * distance)+20;
   }
 }
 
@@ -135,14 +135,19 @@ class Agent {
   }
 
   async queue(desire, ...args) {
-    const parcel_id = args[1];
+    // args are in the form args: [object Object],p71
+    // we need to extract the parcel id from the args
+    
+    const [coordinate, parcel_id] = args;
     // for(const intention of this.intention_queue){
-    //   if(intention.args[1] == parcel_id){
-    //     // we remove the old intention from this.intention_queue
-    //     this.intention_queue.splice(this.intention_queue.indexOf(intention), 1); 
-    //   }
+      // if(intention.args[1] == parcel_id){
+      //   // we remove the old intention from this.intention_queue
+      //   console.log("REMOVE old intention from queue");
+      //   this.intention_queue.splice(this.intention_queue.indexOf(intention), 1); 
+      // }
     // }
     const current = new Intention(desire, ...args);
+    console.log("queue intention: " + desire);
     this.intention_queue.push(current);
   }
 
@@ -188,10 +193,10 @@ class Intention extends Promise {
 
     // check the timestamp in the support memory
     const parcel_id = this.#args[1];
-    console.log("parcel id: " + parcel_id);
+    //console.log("parcel id: " + parcel_id);
     const current_time = new Date().getTime();
     const support_memory_entry = support_memory.get(parcel_id);
-    console.log("support memory entry: " + support_memory_entry);
+    //console.log("support memory entry: " + support_memory_entry);
     if (support_memory_entry) {
       const [timestamp, desire] = support_memory_entry;
       const offset = current_time - timestamp;
