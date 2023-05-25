@@ -19,14 +19,14 @@ async function main () {
     var pddlProblem = new PddlProblem(
         'lights',
         'light1 light2',
-        '(switched-off light1) (switched-on light1)',
+        '(switched-off light1) (switched-on light2)',
         'and (switched-on light1) (switched-on light2)'
     )
     
     let problem = pddlProblem.toPddlString();
     console.log( problem );
 
-    let domain = await readFile('./domain-lights.pddl' );
+    let domain = await readFile('./Agent/lab5/domain-lights.pddl' );
 
     var plan = await onlineSolver( domain, problem );
     
