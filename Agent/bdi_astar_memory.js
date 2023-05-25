@@ -8,7 +8,7 @@ const client = new DeliverooApi(
 const GO_PUT_DOWN = "go_put_down";
 const GO_PICK_UP = "go_pick_up";
 const GO_TO = "go_to";
-const MILLIS_TO_DROP = 1000;
+const MILLIS_TO_DROP = 1000*10;
 
 let maxX = 0;
 let maxY = 0;
@@ -197,9 +197,12 @@ class Intention extends Promise {
       const offset = current_time - timestamp;
       if (offset > MILLIS_TO_DROP) {
         console.log("dropping intention, too old", this);
-        // pending promise to stop
-        this.#reject("dropping intention, too old");
-        return this;
+        try {
+          this.#reject("dropping intention, too old");
+        }
+        catch (error) {
+          console.log("error while rejecting intention", error);
+        }
       }
     }
 
@@ -225,6 +228,8 @@ class Intention extends Promise {
             "with result",
             plan_res
           );
+          // remove plan from plans
+          //plans.splice(plans.indexOf(plan), 1);
           return plan_res;
         } catch (error) {
           console.log(
@@ -307,7 +312,8 @@ class BlindMove extends Plan {
 
   async execute(...args) {
     console.log("blind move to", args);
-    await moveToTarget(getMovements(me.x, me.y, args[0][0].x, args[0][0].y, mapData, maxX, maxY));
+    if(args[0][0].x != me.x || args[0][0].y != me.y) 
+      await moveToTarget(getMovements(me.x, me.y, args[0][0].x, args[0][0].y, mapData, maxX, maxY));
   }
 }
 
@@ -317,6 +323,16 @@ async function moveToTarget(movs) {
 
   movemementsDone[0] = await client.move(movs[0]);
   for (var i = 1; i < movs.length; i++) {
+    if([me.x, me.y] in delivery_points) {
+      console.log("delivering");
+      await client.putdown();
+    }
+    for (const parcel of parcels) {
+      if (parcel.x == me.x && parcel.y == me.y) {
+        console.log("picking up");
+        await client.pickup();
+      }
+    }  
     if (movemementsDone[i - 1]) {
       movemementsDone[i] = await client.move(movs[i]);
     }
