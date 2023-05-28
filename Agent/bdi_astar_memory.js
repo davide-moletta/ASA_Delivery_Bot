@@ -86,7 +86,8 @@ function averageScore({ x: targetX, y: targetY }, action) {
     }
     //The possible score is the actual score of the parcels that I'm carrying - the distance from me to the closest delivery point * the number of parcels that I'm carrying
     //This is to calculate the average score that I can have once i reach the delivery point
-    return actualScore - (parcelsToDeliver * distance)+20;
+    console.log("parcel len" + parcels.size)
+    return actualScore - (parcelsToDeliver * distance)+10*parcels.size;
   }
 }
 
@@ -146,6 +147,17 @@ class Agent {
       //   this.intention_queue.splice(this.intention_queue.indexOf(intention), 1); 
       // }
     // }
+
+    // if parcel_id is not null and in the intention queue, we remove the old intention from this.intention_queue
+    if(parcel_id != null){
+      for(const intention of this.intention_queue){
+        if(intention.getId() == parcel_id && intention.getDesire() == desire){
+          // we remove the old intention from this.intention_queue
+          console.log("REMOVE old intention from queue");
+          this.intention_queue.splice(this.intention_queue.indexOf(intention), 1);
+        }
+      }
+    }
     const current = new Intention(desire, ...args);
     console.log("queue intention: " + desire);
     this.intention_queue.push(current);
@@ -184,6 +196,14 @@ class Intention extends Promise {
     this.#reject = reject;
     this.#desire = desire;
     this.#args = args;
+  }
+
+  getId() {
+    return this.#args[1];
+  }
+
+  getDesire() {
+    return this.#desire;
   }
 
   #started = false;
@@ -305,6 +325,10 @@ class GoPutDown extends Plan {
   async execute(...args) {
     console.log("go put down", args);
     await this.subIntention(GO_TO, args);
+    // remove the parcel from the parcels map
+    const parcel_id = args[1];
+    parcels.delete(parcel_id);
+
     await client.putdown();
 
   }
@@ -328,16 +352,7 @@ async function moveToTarget(movs) {
 
   movemementsDone[0] = await client.move(movs[0]);
   for (var i = 1; i < movs.length; i++) {
-    if([me.x, me.y] in delivery_points) {
-      console.log("delivering");
-      await client.putdown();
-    }
-    for (const parcel of parcels) {
-      if (parcel.x == me.x && parcel.y == me.y) {
-        console.log("picking up");
-        await client.pickup();
-      }
-    }  
+    
     if (movemementsDone[i - 1]) {
       movemementsDone[i] = await client.move(movs[i]);
     }
