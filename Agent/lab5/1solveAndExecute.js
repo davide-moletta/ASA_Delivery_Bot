@@ -16,9 +16,9 @@ function readFile ( path ) {
 
 async function main () {
 
-    let problem = await readFile('./problem-lights.pddl' );
+    let problem = await readFile('./Agent/lab5/problem-lights.pddl' );
     console.log( problem );
-    let domain = await readFile('./domain-lights.pddl' );
+    let domain = await readFile('./Agent/lab5/domain-lights.pddl' );
 
     var plan = await onlineSolver(domain, problem);
     console.log( plan );
