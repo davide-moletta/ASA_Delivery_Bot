@@ -19,7 +19,6 @@ let maxX = 0;
 let maxY = 0;
 var mapData; // the map as a 2D array
 const delivery_points = [];
-
 const support_memory = new Map(); // it will contain parcels ids as key, the timestamp of when the intent was created
 
 clients[0].onMap((width, height, tiles) => {
@@ -36,12 +35,17 @@ clients[0].onMap((width, height, tiles) => {
   });
 });
 setTimeout(() => { }, 1000);
-
-
-function distance({ x: x1, y: y1 }, { x: x2, y: y2 }) {
-  const dx = Math.abs(Math.round(x1) - Math.round(x2));
-  const dy = Math.abs(Math.round(y1) - Math.round(y2));
-  return dx + dy;
+var center_spots;
+var slices_res;
+[center_spots, slices_res] = divideMatrix(mapData, clients.length);
+const slices_delivery = new Array(clients.length).fill(0).map(() => new Array());
+// slices_delivery = for each slice in slice_res, add the delivery points in the slice
+for(const slice of slices_res) {
+  for (const point of slice){
+    if (point in delivery_points) {
+      slices_delivery[slices_res.indexOf(slice)].push(point);
+    }
+  }
 }
 
 /**
@@ -49,20 +53,23 @@ function distance({ x: x1, y: y1 }, { x: x2, y: y2 }) {
  */
 
 const me = {};
-
-client.onYou(({ id, name, x, y, score }) => {
-  me.id = id;
-  me.name = name;
-  me.x = x;
-  me.y = y;
-  me.score = score;
-});
-const parcels = new Map();
-client.onParcelsSensing(async (perceived_parcels) => {
-  for (const p of perceived_parcels) {
-    parcels.set(p.id, p);
+const parcels = new Array(clients.length).fill(0).map(() => new Map());
+for (const client of clients) {
+  client.onYou(({ id, name, x, y, score }) => {
+    me.id = id;
+    me.name = name;
+    me.x = x;
+    me.y = y;
+    me.score = score;
+  });
+  client.onParcelsSensing(async (perceived_parcels) => {
+    for (const p of perceived_parcels) {
+      if([p.x, p.y] in slices_delivery[clients.indexOf(client)]){
+      parcels[clients.indexOf(client)].set(p.id, p);
+    }
   }
-});
+  });
+}
 
 function averageScore({ x: targetX, y: targetY }, action) {
   var actualScore = 0;
@@ -81,18 +88,12 @@ function averageScore({ x: targetX, y: targetY }, action) {
   }
 
   if (action == GO_PICK_UP) {
-    //The possible score is the actual score of the parcels that I'm carrying - the distance from me to the parcel I want to pickup * the number of parcels that I'm carrying
-    //This is to calculate the average score that I can have once i reach the target parcel
-    //Plus the value of the target parcel - the distance to calculate the value of the parcel once I reach it
     return (actualScore + parcelValue) - ((parcelsToDeliver + 1) * distance);
   }
   if (action == GO_PUT_DOWN) {
     if (parcelsToDeliver == 0) {
       return MIN_VALUE;
     }
-    //The possible score is the actual score of the parcels that I'm carrying - the distance from me to the closest delivery point * the number of parcels that I'm carrying
-    //This is to calculate the average score that I can have once i reach the delivery point
-    console.log("parcel len" + parcels.size)
     return actualScore - (parcelsToDeliver * distance)+10*parcels.size;
   }
 }
@@ -127,7 +128,11 @@ function agentLoop() {
  // if best option parcel is already in the queue, remove the old one and add the new one
   if (best_option.desire != null) myAgent.queue(best_option.desire, ...best_option.args);
 }
+for (const client of clients) {
 client.onParcelsSensing(agentLoop);
+}
+
+// TODO: implement multi-agent from here
 
 class Agent {
   intention_queue = new Array();
@@ -142,19 +147,7 @@ class Agent {
   }
 
   async queue(desire, ...args) {
-    // args are in the form args: [object Object],p71
-    // we need to extract the parcel id from the args
-    
     const [coordinate, parcel_id] = args;
-    // for(const intention of this.intention_queue){
-      // if(intention.args[1] == parcel_id){
-      //   // we remove the old intention from this.intention_queue
-      //   console.log("REMOVE old intention from queue");
-      //   this.intention_queue.splice(this.intention_queue.indexOf(intention), 1); 
-      // }
-    // }
-
-    // if parcel_id is not null and in the intention queue, we remove the old intention from this.intention_queue
     if(parcel_id != null){
       for(const intention of this.intention_queue){
         if(intention.getId() == parcel_id && intention.getDesire() == desire){
