@@ -1,25 +1,15 @@
-import { onlineSolver, PddlExecutor, PddlProblem, Beliefset, PddlDomain, PddlAction } from "@unitn-asa/pddl-client";
-import fs from 'fs';
 
-const map = [
-    [0, 0, 1, 0, 1],
-    [2, 1, 1, 1, 1],
-    [0, 0, 1, 0, 1],
-    [0, 0, 1, 0, 1],
-    [0, 0, 1, 0, 1]
-]
+// const map = [
+//     [0, 0, 1, 0, 1],
+//     [2, 1, 1, 1, 1],
+//     [0, 0, 1, 0, 1],
+//     [0, 0, 1, 0, 1],
+//     [0, 0, 1, 0, 1]
+// ]
 
+var parsedMap = "";
 
-function readFile(path) {
-    return new Promise((res, rej) => {
-        fs.readFile(path, 'utf8', (err, data) => {
-            if (err) rej(err)
-            else res(data)
-        })
-    })
-}
-
-function checkOffset(x, y) {
+function checkOffset(x, y, map) {
     var neighbours = "";
     const offsets = [
         { id: "Left", dx: -1, dy: 0 },  // Left
@@ -34,79 +24,71 @@ function checkOffset(x, y) {
         const offsetY = y + offset.dy;
         if (offsetX >= 0 && offsetX < map.length && offsetY >= 0 && offsetY < map.length) {
             if ((map[offsetX][offsetY] == 1 || map[offsetX][offsetY] == 2) && map[x][y] != 0) {
-                neighbours += "(neighbour" + offset.id + " c" + x + y + " c" + offsetX + offsetY + ")\n";
+                neighbours += "(neighbour" + offset.id + " c-" + x + "-" + y + " c-" + offsetX + "-" + offsetY + ")\n";
             }
         }
     }
     return neighbours;
 }
 
-
-function parser() {
-    var parsedMap = "";
-
+function mapParser(map) {
     //cycle all the matrix and for every cell check
     //if it is blocked add the block and skip, if it is a delivery point add the delivery atttribute, if it is a normal cell or a delivery point check the neighbours
     for (let i = 0; i < map.length; i++) {
         for (let j = 0; j < map.length; j++) {
             switch (map[i][j]) {
                 case 0:
-                    parsedMap += "(is-blocked c" + i + j + ")\n";
+                    parsedMap += "(is-blocked c-" + i + "-" + j + ")\n";
                     break;
                 case 1:
-                    parsedMap += checkOffset(i, j);
+                    parsedMap += checkOffset(i, j, map);
                     break;
                 case 2:
-                    parsedMap += "(is-delivery c" + i + j + ")\n";
-                    parsedMap += checkOffset(i, j);
+                    parsedMap += "(is-delivery c-" + i + "-" + j + ")\n";
+                    parsedMap += checkOffset(i, j, map);
                     break;
                 default:
                     break;
             }
         }
     }
-    return parsedMap;
+
+    //console.log(parsedMap);
 }
 
-//async function planner(problemType, problemObjects, problemInit, problemGoal, path) {
-async function planner() {
-
-    //Build problem in one of the following ways
-    // let problem = new PddlProblem(
-    //     problemType,
-    //     problemObjects,
-    //     problemInit,
-    //     problemGoal
-    // ).toPddlString();
-    // console.log("problem: " + problem);
-
-    console.log(parser())
-
-    let problem = await readFile('problem.pddl');
-
-    //Build domain reading from file
-    let domain = await readFile('domain.pddl');
-
-    //Check if plan exists
-    var plan = await onlineSolver(domain, problem);
-    for (const action of plan) {
-        console.log("action: " + action.action + " parameters: " + action.args);
+function parcelsparser(parcels){
+    var parcelsParsed = "";
+    //check that parcels is not empty
+    if(parcels.length == 0){
+        return parcelsParsed;
     }
-
-    //Create executor with all the possible actions
-    const pddlExecutor = new PddlExecutor(
-        { name: 'moveUp', executor: (a, c1, c2) => console.log('executor moveUp ' + a + " " + c1 + " " + c2) },
-        { name: 'moveDown', executor: (a, c1, c2) => console.log('executor moveDown ' + a + " " + c1 + " " + c2) },
-        { name: 'moveLeft', executor: (a, c1, c2) => console.log('executor moveLeft ' + a + " " + c1 + " " + c2) },
-        { name: 'moveRight', executor: (a, c1, c2) => console.log('executor moveRight ' + a + " " + c1 + " " + c2) },
-        { name: 'pickup', executor: (a, p, c) => console.log('executor pickup ' + a + " " + p + " " + c) },
-        { name: 'putdown', executor: (a, p, c) => console.log('executor putdown ' + a + " " + p + " " + c) }
-    );
-
-    //Execute plan
-    pddlExecutor.exec(plan);
+    parcels.forEach(parcel => {
+        parcelsParsed += "(parcel " + parcel.id + ")\n";
+        parcelsParsed += "(at " + parcel.id + " c-" + parcel.x + "-" + parcel.y + ")\n";
+    });
+    console.log(parcelsParsed);
+    return parcelsParsed;
 }
 
-planner();
+function agentsParser(agents) {
+    var agentsParsed = "";
+    agents.forEach(agent => {
+        agentsParsed += "(agent " + agent.id + ")\n";
+        agentsParsed += "(at " + agent.id + " c-" + agent.x + "-" + agent.y + ")\n";
+    });
+    console.log(agentsParsed);
+    return agentsParsed;
+}
 
-export { planner };
+function meParser(me) {
+    var meParsed = "(me " + me.id + ")\n";
+    meParsed += "(at " + me.id + " c-" + me.x + "-" + me.y + ")\n";
+    console.log(meParsed);
+    return meParsed;
+}
+
+function planner(parcels, agents, me) {
+    return parcelsparser(parcels) + agentsParser(agents) + meParser(me);
+}
+
+export { planner, mapParser, parcelsparser, agentsParser, meParser };
