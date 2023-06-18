@@ -1,13 +1,21 @@
+import fs from 'fs';
+import { onlineSolver, PddlExecutor, PddlProblem, Beliefset } from "@unitn-asa/pddl-client";
 
-// const map = [
-//     [0, 0, 1, 0, 1],
-//     [2, 1, 1, 1, 1],
-//     [0, 0, 1, 0, 1],
-//     [0, 0, 1, 0, 1],
-//     [0, 0, 1, 0, 1]
-// ]
+//const beliefMap = new Beliefset();
+//const beliefMe = new Beliefset();
+//const beliefParcels = new Beliefset();
+//const beliefAgents = new Beliefset();
+const beliefSet = new Beliefset();
+var goal
 
-var parsedMap = "";
+function readFile ( path ) {
+    return new Promise( (res, rej) => {
+        fs.readFile( path, 'utf8', (err, data) => {
+            if (err) rej(err)
+            else res(data)
+        })
+    })
+}
 
 function checkOffset(x, y, map) {
     var neighbours = "";
@@ -24,11 +32,10 @@ function checkOffset(x, y, map) {
         const offsetY = y + offset.dy;
         if (offsetX >= 0 && offsetX < map.length && offsetY >= 0 && offsetY < map.length) {
             if ((map[offsetX][offsetY] == 1 || map[offsetX][offsetY] == 2) && map[x][y] != 0) {
-                neighbours += "(neighbour" + offset.id + " c-" + x + "-" + y + " c-" + offsetX + "-" + offsetY + ")\n";
+                beliefSet.declare( "neighbour" + offset.id + " c-" + x + "-" + y + " c-" + offsetX + "-" + offsetY );
             }
         }
     }
-    return neighbours;
 }
 
 function mapParser(map) {
@@ -38,57 +45,72 @@ function mapParser(map) {
         for (let j = 0; j < map.length; j++) {
             switch (map[i][j]) {
                 case 0:
-                    parsedMap += "(is-blocked c-" + i + "-" + j + ")\n";
+                    beliefSet.declare( "is-blocked c-" + i + "-" + j );
                     break;
                 case 1:
-                    parsedMap += checkOffset(i, j, map);
+                    checkOffset(i, j, map);
                     break;
                 case 2:
-                    parsedMap += "(is-delivery c-" + i + "-" + j + ")\n";
-                    parsedMap += checkOffset(i, j, map);
+                    beliefSet.declare( "is-delivery c-" + i + "-" + j );
+                    checkOffset(i, j, map);
                     break;
                 default:
                     break;
             }
         }
     }
-
-    //console.log(parsedMap);
 }
 
 function parcelsparser(parcels){
-    var parcelsParsed = "";
-    //check that parcels is not empty
-    if(parcels.length == 0){
-        return parcelsParsed;
-    }
     parcels.forEach(parcel => {
-        parcelsParsed += "(parcel " + parcel.id + ")\n";
-        parcelsParsed += "(at " + parcel.id + " c-" + parcel.x + "-" + parcel.y + ")\n";
+        beliefSet.declare( "at " + parcel.id + " c-" + parcel.x + "-" + parcel.y );
     });
-    console.log(parcelsParsed);
-    return parcelsParsed;
 }
 
 function agentsParser(agents) {
-    var agentsParsed = "";
     agents.forEach(agent => {
-        agentsParsed += "(agent " + agent.id + ")\n";
-        agentsParsed += "(at " + agent.id + " c-" + agent.x + "-" + agent.y + ")\n";
+        beliefSet.declare( "at " + agent.id + " c-" + agent.x + "-" + agent.y );
     });
-    console.log(agentsParsed);
-    return agentsParsed;
 }
 
 function meParser(me) {
-    var meParsed = "(me " + me.id + ")\n";
-    meParsed += "(at " + me.id + " c-" + me.x + "-" + me.y + ")\n";
-    console.log(meParsed);
-    return meParsed;
+    beliefSet.declare( "at " + me.id + " c-" + me.x + "-" + me.y );
 }
 
-function planner(parcels, agents, me) {
-    return parcelsparser(parcels) + agentsParser(agents) + meParser(me);
+function goalParser(goals) {
+    goal = "and"
+
+    for(const g of goals){
+        goal += " (" + g + ")";
+    }
+}
+
+async function planner(parcels, agents, me) {
+    let domain = await readFile('./Agent/single_agent_PDDL/domain.pddl' );
+
+    goal = "and (at 09d0b00447e c-6-3)";
+
+    var pddlProblem = new PddlProblem(
+        'agentPRO', //name
+        beliefSet.objects.join(' '), //objects
+        beliefSet.toPddlString(), //init
+        goal //goal
+    )
+    
+    let problem = pddlProblem.toPddlString();
+    console.log( problem );
+
+    var plan = await onlineSolver( domain, problem );
+    
+    const pddlExecutor = new PddlExecutor( { 
+        name: 'moveUp', executor: (a, c1, c2) => console.log('moveUp ' + a + ' from: ' + c1 + ' to: ' + c2), 
+        name: 'moveLeft', executor: (a, c1, c2) => console.log('moveLeft ' + a + ' from: ' + c1 + ' to: ' + c2), 
+        name: 'moveRight', executor: (a, c1, c2) => console.log('moveRight ' + a + ' from: ' + c1 + ' to: ' + c2), 
+        name: 'moveDown', executor: (a, c1, c2) => console.log('moveDown ' + a + ' from: ' + c1 + ' to: ' + c2), 
+        name: 'pickup', executor: (a, p, c) => console.log(a + ' picked up: ' + p + ' from: ' + c),
+        name: 'putdown', executor: (a, p, c) => console.log(a + ' put down: ' + p + ' in: ' + c) 
+    } );
+    pddlExecutor.exec( plan );
 }
 
 export { planner, mapParser, parcelsparser, agentsParser, meParser };

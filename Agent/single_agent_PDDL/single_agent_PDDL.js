@@ -24,6 +24,7 @@ client.onMap((width, height, tiles) => {
       delivery_points.push([tile.x, tile.y]);
     }
   });
+  //once the map is complete calls the function to save the string of the map as a PDDL problem
   mapParser(mapData);
 });
 setTimeout(() => { }, 1000);
@@ -35,6 +36,7 @@ client.onYou(({ id, name, x, y, score }) => {
   me.x = x;
   me.y = y;
   me.score = score;
+  //calls the function to save the string of the agent as a PDDL problem
   meParser(me);
 });
 
@@ -43,6 +45,7 @@ client.onParcelsSensing(async (perceived_parcels) => {
   for (const p of perceived_parcels) {
     parcels.set(p.id, p);
   }
+  //calls the function to save the string of the parcels as a PDDL problem
   parcelsparser(parcels);
 });
 
@@ -51,5 +54,14 @@ client.onAgentsSensing(async (perceived_agents) => {
   for (const a of perceived_agents) {
     agents.set(a.id, a);
   }
+  //calls the function to save the string of the enemy agents as a PDDL problem
   agentsParser(agents);
 });
+
+
+
+setTimeout(() => {
+  console.log("Planning...");
+  //calls the function to plan the path
+  planner(parcels, agents, me);
+}, 1000);
