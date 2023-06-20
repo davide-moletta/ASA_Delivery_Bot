@@ -22,7 +22,7 @@ async function main () {
     myBeliefset.declare( 'switched-off light2' );
 
     var pddlProblem = new PddlProblem(
-        'lights',
+        'lights', 
         myBeliefset.objects.join(' '),
         myBeliefset.toPddlString(),
         'and (switched-on light1) (not (switched-on light2))'

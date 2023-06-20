@@ -1,14 +1,12 @@
-import { onlineSolver, PddlExecutor, PddlProblem, Beliefset, PddlDomain, PddlAction } from "@unitn-asa/pddl-client";
-import fs from 'fs';
+import fs, { writeFile } from 'fs';
+import { onlineSolver, PddlExecutor, PddlProblem, Beliefset } from "@unitn-asa/pddl-client";
 
-const map = [
-    [0, 0, 1, 0, 1],
-    [2, 1, 1, 1, 1],
-    [0, 0, 1, 0, 1],
-    [0, 0, 1, 0, 1],
-    [0, 0, 1, 0, 1]
-]
-
+//const beliefMap = new Beliefset();
+//const beliefMe = new Beliefset();
+//const beliefParcels = new Beliefset();
+//const beliefAgents = new Beliefset();
+const beliefSet = new Beliefset();
+var goal
 
 function readFile(path) {
     return new Promise((res, rej) => {
@@ -19,7 +17,7 @@ function readFile(path) {
     })
 }
 
-function checkOffset(x, y) {
+function checkOffset(x, y, map) {
     var neighbours = "";
     const offsets = [
         { id: "Left", dx: -1, dy: 0 },  // Left
@@ -34,79 +32,108 @@ function checkOffset(x, y) {
         const offsetY = y + offset.dy;
         if (offsetX >= 0 && offsetX < map.length && offsetY >= 0 && offsetY < map.length) {
             if ((map[offsetX][offsetY] == 1 || map[offsetX][offsetY] == 2) && map[x][y] != 0) {
-                neighbours += "(neighbour" + offset.id + " c" + x + y + " c" + offsetX + offsetY + ")\n";
+                beliefSet.declare("neighbour" + offset.id + " c_" + x + "_" + y + " c_" + offsetX + "_" + offsetY);
             }
         }
     }
-    return neighbours;
 }
 
-
-function parser() {
-    var parsedMap = "";
-
+function mapParser(map) {
     //cycle all the matrix and for every cell check
     //if it is blocked add the block and skip, if it is a delivery point add the delivery atttribute, if it is a normal cell or a delivery point check the neighbours
     for (let i = 0; i < map.length; i++) {
         for (let j = 0; j < map.length; j++) {
             switch (map[i][j]) {
                 case 0:
-                    parsedMap += "(is-blocked c" + i + j + ")\n";
+                    beliefSet.declare("is-blocked c_" + i + "_" + j);
                     break;
                 case 1:
-                    parsedMap += checkOffset(i, j);
+                    checkOffset(i, j, map);
                     break;
                 case 2:
-                    parsedMap += "(is-delivery c" + i + j + ")\n";
-                    parsedMap += checkOffset(i, j);
+                    beliefSet.declare("is-delivery c_" + i + "_" + j);
+                    checkOffset(i, j, map);
                     break;
                 default:
                     break;
             }
         }
     }
-    return parsedMap;
 }
 
-//async function planner(problemType, problemObjects, problemInit, problemGoal, path) {
-async function planner() {
+function parcelsparser(parcels) {
+    parcels.forEach(parcel => {
+        beliefSet.declare("at p_" + parcel.id + " c_" + parcel.x + "_" + parcel.y);
+    });
+}
 
-    //Build problem in one of the following ways
-    // let problem = new PddlProblem(
-    //     problemType,
-    //     problemObjects,
-    //     problemInit,
-    //     problemGoal
-    // ).toPddlString();
-    // console.log("problem: " + problem);
+function agentsParser(agents) {
+    agents.forEach(agent => {
+        beliefSet.declare("at a_" + agent.id + " c_" + agent.x + "_" + agent.y);
+    });
+}
 
-    console.log(parser())
+function meParser(me) {
+    beliefSet.declare("at me_" + me.id + " c_" + me.x + "_" + me.y);
+}
 
-    let problem = await readFile('problem.pddl');
+function goalParser(goals) {
+    goal = "and"
 
-    //Build domain reading from file
-    let domain = await readFile('domain.pddl');
-
-    //Check if plan exists
-    var plan = await onlineSolver(domain, problem);
-    for (const action of plan) {
-        console.log("action: " + action.action + " parameters: " + action.args);
+    for (const g of goals) {
+        goal += " (" + g + ")";
     }
+}
 
-    //Create executor with all the possible actions
-    const pddlExecutor = new PddlExecutor(
-        { name: 'moveUp', executor: (a, c1, c2) => console.log('executor moveUp ' + a + " " + c1 + " " + c2) },
-        { name: 'moveDown', executor: (a, c1, c2) => console.log('executor moveDown ' + a + " " + c1 + " " + c2) },
-        { name: 'moveLeft', executor: (a, c1, c2) => console.log('executor moveLeft ' + a + " " + c1 + " " + c2) },
-        { name: 'moveRight', executor: (a, c1, c2) => console.log('executor moveRight ' + a + " " + c1 + " " + c2) },
-        { name: 'pickup', executor: (a, p, c) => console.log('executor pickup ' + a + " " + p + " " + c) },
-        { name: 'putdown', executor: (a, p, c) => console.log('executor putdown ' + a + " " + p + " " + c) }
-    );
+function objectsParser() {
+    var objects = "";
+    var previous = "c";
+    for (const o of beliefSet.objects) {
+        if (o.split("_")[0] != previous) {
+            objects += "- " + previous + "\n";
+            objects += "    " + o + " ";
+            previous = o.split("_")[0];
+        } else {
+            objects += o + " ";
+        }
+    }
+    objects += "- " + previous + " ";
+    return objects;
+}
 
-    //Execute plan
+async function planner(parcels, agents, me) {
+    let domain = await readFile('./Agent/single_agent_PDDL/domain.pddl');
+
+    goal = "and (at me_09d0b00447e c_6_3)";
+
+    var pddlProblem = new PddlProblem(
+        'agentPRO', //name
+        objectsParser(),//beliefSet.objects.join(' '), //objects
+        beliefSet.toPddlString(), //init
+        goal //goal
+    )
+
+    let problem = pddlProblem.toPddlString();
+    console.log(problem);
+
+    fs.writeFile('./Agent/single_agent_PDDL/problem.pddl', problem, err => {
+        if (err) {
+            console.error(err);
+        }
+        // file written successfully
+    });
+
+    var plan = await onlineSolver(domain, problem);
+
+    const pddlExecutor = new PddlExecutor({
+        name: 'moveUp', executor: (a, c1, c2) => console.log('moveUp ' + a + ' from: ' + c1 + ' to: ' + c2),
+        name: 'moveLeft', executor: (a, c1, c2) => console.log('moveLeft ' + a + ' from: ' + c1 + ' to: ' + c2),
+        name: 'moveRight', executor: (a, c1, c2) => console.log('moveRight ' + a + ' from: ' + c1 + ' to: ' + c2),
+        name: 'moveDown', executor: (a, c1, c2) => console.log('moveDown ' + a + ' from: ' + c1 + ' to: ' + c2),
+        name: 'pickup', executor: (a, p, c) => console.log(a + ' picked up: ' + p + ' from: ' + c),
+        name: 'putdown', executor: (a, p, c) => console.log(a + ' put down: ' + p + ' in: ' + c)
+    });
     pddlExecutor.exec(plan);
 }
 
-planner();
-
-export { planner };
+export { planner, mapParser, parcelsparser, agentsParser, meParser };

@@ -1,4 +1,4 @@
-(define (domain agentDOM)
+(define (domain default)
 
     (:requirements :strips :typing :negative-preconditions)
 
@@ -15,7 +15,7 @@
         (neighbourUp ?c1 - cell ?c2 - cell)
         (neighbourDown ?c1 - cell ?c2 - cell)
         (neighbourLeft ?c1 - cell ?c2 - cell)
-        (neighbourRigth ?c1 - cell ?c2 - cell)
+        (neighbourRight ?c1 - cell ?c2 - cell)
         (delivered ?p - parcel)
     )
 
@@ -48,7 +48,7 @@
     (:action moveRight
         :parameters (?a - agent ?c1 - cell ?c2 - cell)
         :precondition (and
-            (neighbourRigth ?c1 ?c2)
+            (neighbourRight ?c1 ?c2)
             (not (is-blocked ?c2))
             (at ?a ?c1)
         )
