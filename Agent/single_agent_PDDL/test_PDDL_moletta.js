@@ -106,6 +106,15 @@ function objectsParser() {
     return objects;
 }
 
+//Parse the found plan to make it deliveroo-readable
+function planParser(plan) {
+    let actions = new Array(plan.length);
+    for (var i = 0; i < plan.length; i++) {
+        actions[i] = plan[i].action
+    }
+    return actions;
+}
+
 //Planner function, it takes the parcels, agents and me from the client and returns the plan
 async function planner(parcels, agents, me) {
 
@@ -119,7 +128,7 @@ async function planner(parcels, agents, me) {
     meParser(me);
 
     //Set the goal
-    goal = "and (at me_09d0b00447e c_6_3)";
+    goal = "and (holding me_09d0b00447e p_p0)";
 
     //Create the PDDL problem
     var pddlProblem = new PddlProblem(
@@ -143,7 +152,7 @@ async function planner(parcels, agents, me) {
     //Call the onlineSolver function and return the plan if it exists
     var plan = await onlineSolver(domain, problem);
 
-    return plan;
+    return planParser(plan);
 }
 
 export { planner, mapParser }; //, parcelsparser, agentsParser, meParser };

@@ -1,5 +1,5 @@
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
-import { planner, mapParser, meParser, parcelsparser, agentsParser } from "./test_PDDL_moletta.js";
+import { planner, mapParser } from "./test_PDDL_moletta.js"; //, meParser, parcelsparser, agentsParser
 
 const client = new DeliverooApi(
   "http://localhost:8080/?name=Cannarsi",
@@ -62,4 +62,4 @@ client.onAgentsSensing(async (perceived_agents) => {
 
 setTimeout(() => {
   planner(parcels, agents, me);
-}, 50000);
+}, 10000);

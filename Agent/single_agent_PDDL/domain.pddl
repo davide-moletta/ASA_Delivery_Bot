@@ -22,7 +22,7 @@
         (delivered ?p - p)
     )
 
-    (:action moveUp
+    (:action up
         :parameters (?me - me ?c1 - c ?c2 - c)
         :precondition (and
             (neighbourUp ?c1 ?c2)
@@ -35,7 +35,7 @@
         )
     )
 
-    (:action moveDown
+    (:action down
         :parameters (?me - me ?c1 - c ?c2 - c)
         :precondition (and
             (neighbourDown ?c1 ?c2)
@@ -48,7 +48,7 @@
         )
     )
 
-    (:action moveRight
+    (:action right
         :parameters (?me - me ?c1 - c ?c2 - c)
         :precondition (and
             (neighbourRight ?c1 ?c2)
@@ -61,7 +61,7 @@
         )
     )
 
-    (:action moveLeft
+    (:action left
         :parameters (?me - me ?c1 - c ?c2 - c)
         :precondition (and
             (neighbourLeft ?c1 ?c2)
