@@ -133,7 +133,7 @@ async function planner(parcels, agents, me) {
     //Create the PDDL problem
     var pddlProblem = new PddlProblem(
         'agentPRO', //name
-        objectsParser(),//beliefSet.objects.join(' '), //objects
+        objectsParser(), //objects
         beliefSet.toPddlString(), //init
         goal //goal
     )
