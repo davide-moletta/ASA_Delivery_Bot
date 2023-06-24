@@ -81,12 +81,17 @@ function meParser(me) {
 }
 
 //Parse the goals sent by the client and add them to the goal
-function goalParser(goals) {
+function goalParser(desire, args, me) {
     goal = "and"
 
-    for (const g of goals) {
-        goal += " (" + g + ")";
+    if(desire == "pickup"){
+        goal += " (holding me_" + me + " p_" + args.id + ")"
+    }else{
+        for(const a of args){
+            goal += " (delivered p_" + a.id + ")"
+        }
     }
+    return goal;
 }
 
 //Parse the objects in the beliefSet and write them in the PDDL problem necessary otherwise types breake the normal parser
@@ -108,15 +113,15 @@ function objectsParser() {
 
 //Parse the found plan to make it deliveroo-readable
 function planParser(plan) {
-    let actions = new Array(plan.length);
-    for (var i = 0; i < plan.length; i++) {
-        actions[i] = plan[i].action
+    var actions = [];
+    for (const p of plan) {
+        actions.push(p.action);
     }
     return actions;
 }
 
 //Planner function, it takes the parcels, agents and me from the client and returns the plan
-async function planner(parcels, agents, me) {
+async function planner(parcels, agents, me, goal) {
 
     //Read domain from domain file
     let domain = await readFile('./Agent/single_agent_PDDL/domain.pddl');
@@ -126,9 +131,6 @@ async function planner(parcels, agents, me) {
     parcelsparser(parcels);
     agentsParser(agents);
     meParser(me);
-
-    //Set the goal
-    goal = "and (holding me_09d0b00447e p_p0)";
 
     //Create the PDDL problem
     var pddlProblem = new PddlProblem(
@@ -155,4 +157,4 @@ async function planner(parcels, agents, me) {
     return planParser(plan);
 }
 
-export { planner, mapParser }; //, parcelsparser, agentsParser, meParser };
+export { planner, goalParser, mapParser }; //, parcelsparser, agentsParser, meParser };
