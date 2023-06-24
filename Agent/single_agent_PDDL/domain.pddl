@@ -3,96 +3,99 @@
     (:requirements :strips :typing :negative-preconditions)
 
     (:types
-        agent parcel cell
+        a p c me
     )
 
     (:predicates
-        (at ?a - agent ?c - cell)
-        (in ?p - parcel ?c - cell)
-        (holding ?a - agent ?p - parcel)
-        (is-delivery ?c - cell)
-        (is-blocked ?c - cell)
-        (neighbourUp ?c1 - cell ?c2 - cell)
-        (neighbourDown ?c1 - cell ?c2 - cell)
-        (neighbourLeft ?c1 - cell ?c2 - cell)
-        (neighbourRight ?c1 - cell ?c2 - cell)
-        (delivered ?p - parcel)
+        (at ?me - me ?c - c)
+        (in ?p - p ?c - c)
+
+        (is-delivery ?c - c)
+        (is-blocked ?c - c)
+
+        (neighbourUp ?c1 - c ?c2 - c)
+        (neighbourDown ?c1 - c ?c2 - c)
+        (neighbourLeft ?c1 - c ?c2 - c)
+        (neighbourRight ?c1 - c ?c2 - c)
+
+        (holding ?me - me ?p - p)
+        (delivered ?p - p)
     )
 
     (:action moveUp
-        :parameters (?a - agent ?c1 - cell ?c2 - cell)
+        :parameters (?me - me ?c1 - c ?c2 - c)
         :precondition (and
             (neighbourUp ?c1 ?c2)
             (not (is-blocked ?c2))
-            (at ?a ?c1)
+            (at ?me ?c1)
         )
         :effect (and
-            (at ?a ?c2)
-            (not (at ?a ?c1))
+            (at ?me ?c2)
+            (not (at ?me ?c1))
         )
     )
 
     (:action moveDown
-        :parameters (?a - agent ?c1 - cell ?c2 - cell)
+        :parameters (?me - me ?c1 - c ?c2 - c)
         :precondition (and
             (neighbourDown ?c1 ?c2)
             (not (is-blocked ?c2))
-            (at ?a ?c1)
+            (at ?me ?c1)
         )
         :effect (and
-            (at ?a ?c2)
-            (not (at ?a ?c1))
+            (at ?me ?c2)
+            (not (at ?me ?c1))
         )
     )
 
     (:action moveRight
-        :parameters (?a - agent ?c1 - cell ?c2 - cell)
+        :parameters (?me - me ?c1 - c ?c2 - c)
         :precondition (and
             (neighbourRight ?c1 ?c2)
             (not (is-blocked ?c2))
-            (at ?a ?c1)
+            (at ?me ?c1)
         )
         :effect (and
-            (at ?a ?c2)
-            (not (at ?a ?c1))
+            (at ?me ?c2)
+            (not (at ?me ?c1))
         )
     )
 
     (:action moveLeft
-        :parameters (?a - agent ?c1 - cell ?c2 - cell)
+        :parameters (?me - me ?c1 - c ?c2 - c)
         :precondition (and
             (neighbourLeft ?c1 ?c2)
             (not (is-blocked ?c2))
-            (at ?a ?c1)
+            (at ?me ?c1)
         )
         :effect (and
-            (at ?a ?c2)
-            (not (at ?a ?c1))
+            (at ?me ?c2)
+            (not (at ?me ?c1))
         )
     )
 
     (:action pickup
-        :parameters (?a - agent ?p - parcel ?c - cell)
+        :parameters (?me - me ?p - p ?c - c)
         :precondition (and
-            (at ?a ?c)
+            (at ?me ?c)
             (in ?p ?c)
-            (not (holding ?a ?p))
+            (not (holding ?me ?p))
         )
         :effect (and
-            (holding ?a ?p)
+            (holding ?me ?p)
             (not (in ?p ?c))
         )
     )
 
     (:action putdown
-        :parameters (?a - agent ?p - parcel ?c - cell)
+        :parameters (?me - me ?p - p ?c - c)
         :precondition (and
-            (at ?a ?c)
-            (holding ?a ?p)
+            (at ?me ?c)
+            (holding ?me ?p)
             (is-delivery ?c)
         )
         :effect (and
-            (not (holding ?a ?p))
+            (not (holding ?me ?p))
             (delivered ?p)
         )
     )
