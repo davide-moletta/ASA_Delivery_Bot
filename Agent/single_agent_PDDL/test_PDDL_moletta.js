@@ -3,9 +3,7 @@ import { onlineSolver, PddlExecutor, PddlProblem, Beliefset } from "@unitn-asa/p
 
 //Used to store the map and parse it only one time
 const beliefMap = new Beliefset();
-//Used to store dynamic values like agents, parcels and me
-var beliefSet = new Beliefset();
-var goal
+var domain, mapObjects = "";
 
 function readFile(path) {
     return new Promise((res, rej) => {
@@ -14,6 +12,18 @@ function readFile(path) {
             else res(data)
         })
     })
+}
+
+async function readDomain() {
+    //Read domain from domain file
+    domain = await readFile('./Agent/single_agent_PDDL/domain.pddl');
+}
+
+function mapObjectParser() {
+    for (const o of beliefMap.objects) {
+        mapObjects += o + " ";
+    }
+    mapObjects += "- c";
 }
 
 //Check the adjacent cells of the one called
@@ -59,52 +69,58 @@ function mapParser(map) {
             }
         }
     }
+    mapObjectParser();
 }
 
 //Parse the parcels sent by the client and add them to the beliefSet
-function parcelsparser(parcels) {
+function parcelsparser(parcels, me,  beliefs) {
     parcels.forEach(parcel => {
-        beliefSet.declare("in p_" + parcel.id + " c_" + parcel.x + "_" + parcel.y);
+        if(parcel.carriedBy == me.id){
+            beliefs.declare("holding me_" + me.id + " p_" + parcel.id);
+        }else{
+            beliefs.declare("in p_" + parcel.id + " c_" + parcel.x + "_" + parcel.y);
+        } 
     });
 }
 
 //Parse the "enemy" agents sent by the client and add them to the beliefSet
-function agentsParser(agents) {
+function agentsParser(agents, beliefs) {
     agents.forEach(agent => {
-        beliefSet.declare("at a_" + agent.id + " c_" + agent.x + "_" + agent.y);
+        beliefs.declare("in a_" + agent.id + " c_" + agent.x + "_" + agent.y);
     });
-}
-
-//Parse the "me" agent sent by the client and add it to the beliefSet
-function meParser(me) {
-    beliefSet.declare("at me_" + me.id + " c_" + me.x + "_" + me.y);
 }
 
 //Parse the goals sent by the client and add them to the goal
 function goalParser(desire, args, me) {
-    goal = "and"
+    var goal = "and"
 
-    if(desire == "pickup"){
+    if (desire == "pickup") {
         goal += " (holding me_" + me + " p_" + args.id + ")"
-    }else{
-        for(const a of args){
+    } else if (desire == "deliver") {
+        for (const a of args) {
             goal += " (delivered p_" + a.id + ")"
         }
+    } else {
+        goal += " (at me_" + me + " c_" + args.x + "_" + args.y + ")"
     }
     return goal;
 }
 
 //Parse the objects in the beliefSet and write them in the PDDL problem necessary otherwise types breake the normal parser
-function objectsParser() {
+function objectsParser(beliefs) {
     var objects = "";
-    var previous = "c";
-    for (const o of beliefSet.objects) {
-        if (o.split("_")[0] != previous) {
-            objects += "- " + previous + "\n";
-            objects += "    " + o + " ";
-            previous = o.split("_")[0];
-        } else {
-            objects += o + " ";
+    var previous = [...beliefs.objects][0].split("_")[0];
+
+    for (const o of beliefs.objects) {
+        var type = o.split("_")[0];
+        if (type != "c") {
+            if (type != previous) {
+                objects += "- " + previous + "\n";
+                objects += "    " + o + " ";
+                previous = type;
+            } else {
+                objects += o + " ";
+            }
         }
     }
     objects += "- " + previous + " ";
@@ -123,33 +139,23 @@ function planParser(plan) {
 //Planner function, it takes the parcels, agents and me from the client and returns the plan
 async function planner(parcels, agents, me, goal) {
 
-    //Read domain from domain file
-    let domain = await readFile('./Agent/single_agent_PDDL/domain.pddl');
-
     //Set the beliefSet equals to the beliefMap and parse the dynamic objects
-    beliefSet = beliefMap;
-    parcelsparser(parcels);
-    agentsParser(agents);
-    meParser(me);
+    var beliefs = new Beliefset();
+
+    parcelsparser(parcels, me, beliefs);
+    agentsParser(agents, beliefs);
+    beliefs.declare("at me_" + me.id + " c_" + me.x + "_" + me.y);
 
     //Create the PDDL problem
     var pddlProblem = new PddlProblem(
         'agentPRO', //name
-        objectsParser(), //objects
-        beliefSet.toPddlString(), //init
+        mapObjects + "\n    " + objectsParser(beliefs), //objects
+        beliefMap.toPddlString() + " " + beliefs.toPddlString(), //init
         goal //goal
     )
 
     //Print the PDDL problem as a pddlString
     let problem = pddlProblem.toPddlString();
-    console.log(problem);
-
-    //Write the PDDL problem in the file (FOR DEBUGGING - TO REMOVE)
-    fs.writeFile('./Agent/single_agent_PDDL/problem.pddl', problem, err => {
-        if (err) {
-            console.error(err);
-        }
-    });
 
     //Call the onlineSolver function and return the plan if it exists
     var plan = await onlineSolver(domain, problem);
@@ -157,4 +163,4 @@ async function planner(parcels, agents, me, goal) {
     return planParser(plan);
 }
 
-export { planner, goalParser, mapParser }; //, parcelsparser, agentsParser, meParser };
+export { planner, goalParser, mapParser, readDomain }; //, parcelsparser, agentsParser, meParser };
