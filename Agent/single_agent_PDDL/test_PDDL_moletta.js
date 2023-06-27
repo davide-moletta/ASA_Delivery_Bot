@@ -1,6 +1,10 @@
 import fs, { writeFile } from 'fs';
 import { onlineSolver, PddlExecutor, PddlProblem, Beliefset } from "@unitn-asa/pddl-client";
 
+const GO_PUT_DOWN = "go_put_down";
+const GO_PICK_UP = "go_pick_up";
+const GO_TO = "go_to";
+
 //Used to store the map and parse it only one time
 const beliefMap = new Beliefset();
 var domain, mapObjects = "";
@@ -94,9 +98,9 @@ function agentsParser(agents, beliefs) {
 function goalParser(desire, args, me) {
     var goal = "and"
 
-    if (desire == "pickup") {
+    if (desire == GO_PICK_UP) {
         goal += " (holding me_" + me + " p_" + args.id + ")"
-    } else if (desire == "deliver") {
+    } else if (desire == GO_PUT_DOWN) {
         for (const a of args) {
             goal += " (delivered p_" + a.id + ")"
         }
@@ -156,7 +160,7 @@ async function planner(parcels, agents, me, goal) {
 
     //Print the PDDL problem as a pddlString
     let problem = pddlProblem.toPddlString();
-
+    
     //Call the onlineSolver function and return the plan if it exists
     var plan = await onlineSolver(domain, problem);
 
