@@ -7,10 +7,9 @@ const client = new DeliverooApi(
 );
 
 // TODO:
-// - pickup and putdown during a plan
 // - update metrics based on the server values
 // - weight the random function for the blindMove
-// - create checks for the delivery intentions
+// - find a way to make a stoppable common function for the movements execution
 
 const GO_PUT_DOWN = "go_put_down";
 const GO_PICK_UP = "go_pick_up";
@@ -18,7 +17,7 @@ const BLIND_MOVE = "blind_move";
 
 let maxX = 0;
 let maxY = 0;
-var mapData; // the map as a 2D array
+var mapData;
 const delivery_points = [];
 
 client.onMap((width, height, tiles) => {
@@ -38,11 +37,19 @@ client.onMap((width, height, tiles) => {
 });
 setTimeout(() => { }, 1000);
 
-readDomain();
+const config = new Map();
+client.onConfig((conf) => {
+  config.set("parGenInt", conf.PARCELS_GENERATION_INTERVAL);
+  config.set("moveDur", conf.MOVEMENT_DURATION);
+  config.set("ageObsDist", conf.AGENTS_OBSERVATION_DISTANCE);
+  config.set("parObsDist", conf.PARCELS_OBSERVATION_DISTANCE);
+  config.set("parRewAvg", conf.PARCEL_REWARD_AVG);
+  config.set("parRewVar", conf.PARCEL_REWARD_VARIANCE);
+  config.set("parDecInt", conf.PARCEL_DECADING_INTERVAL);
+});
 
-/**
- * Belief revision function
- */
+//Read the PDDL domain from the file
+readDomain();
 
 const me = {};
 client.onYou(({ id, name, x, y, score }) => {
@@ -67,6 +74,7 @@ client.onAgentsSensing(async (perceived_agents) => {
   }
 });
 
+//Generates two random points on the map and returns the target coordinates for the blind move
 function blindMove() {
   var targetX = 0;
   var targetY = 0;
@@ -79,81 +87,76 @@ function blindMove() {
   return [{ x: targetX, y: targetY }, 0]
 }
 
-function averageScore(args, desire) {
-  var actualScore = 0;
-  var parcelsToDeliver = 0;
-
-  for (const parcel of parcels.values()) {
-    if (parcel.carriedBy == me.id) {
-      actualScore += parcel.reward;
-      parcelsToDeliver++;
-    }
-  }
-
+//Calculate an ideal score based on the beliefs of the agent to select the best option
+function averageScore(args, desire, actualScore, parcelsToDeliver) {
   if (desire == GO_PICK_UP) {
-    //The possible score is the actual score of the parcels that I'm carrying - the distance from me to the parcel I want to pickup * the number of parcels that I'm carrying
-    //This is to calculate the average score that I can have once i reach the target parcel
-    //Plus the value of the target parcel - the distance to calculate the value of the parcel once I reach it
-
     var distance = Math.abs(Math.round(args.x) - Math.round(me.x)) + Math.abs(Math.round(args.y) - Math.round(me.y));
     return (actualScore + args.reward) - ((parcelsToDeliver + 1) * distance);
   }
   if (desire == GO_PUT_DOWN) {
-    if (parcelsToDeliver == 0) {
-      return Number.MIN_VALUE;
-    }
-    //The possible score is the actual score of the parcels that I'm carrying - the distance from me to the closest delivery point * the number of parcels that I'm carrying
-    //This is to calculate the average score that I can have once i reach the delivery point
+    if (parcelsToDeliver == 0) return Number.MIN_VALUE
+
     return actualScore - parcelsToDeliver + 10 * parcels.size;
   }
 }
 
-function agentLoop() {
+//Check the environment to search for the best possible action to take
+function checkOptions() {
   const options = [];
   const deliveries = [];
+  var actualScore = 0;
+  var parcelsToDeliver = 0;
+
+  //For each parcel checks if it is carryed by the agent or not and adds the option to pick it up or put it down
   for (const parcel of parcels.values()) {
     if (!parcel.carriedBy) {
       options.push({ desire: GO_PICK_UP, args: [parcel, parcel.id] });
     } else if (parcel.carriedBy == me.id) {
+      actualScore += parcel.reward;
+      parcelsToDeliver++;
       deliveries.push(parcel);
     }
   }
   options.push({ desire: GO_PUT_DOWN, args: deliveries });
 
-
+  //Check all the options to find the best one
   let best_option = { desire: null, args: null };
-  let nearest = Number.MIN_VALUE;
+  let best_score = Number.MIN_VALUE;
+
   for (const option of options) {
     let current_desire = option.desire;
-    let current_score = averageScore(option.args[0], current_desire);
-    if (current_score > nearest) {
+    let current_score = averageScore(option.args[0], current_desire, actualScore, parcelsToDeliver);
+    if (current_score > best_score) {
       best_option = { desire: option.desire, args: option.args }
-      nearest = current_score;
+      best_score = current_score;
     }
   }
 
+  //If no best option is found, the agent performs a blind move otherwise the agents calls the intention revision to see if the best option is better than the current intention
   if (best_option.desire == null) {
     console.log("No best option, going for the blind move");
     best_option = { desire: BLIND_MOVE, args: blindMove() };
   } else {
-    myAgent.intentionRevision(best_option.desire, ...best_option.args)
+    myAgent.intentionRevision(best_option.desire)
   }
 
-  // if best option parcel is already in the queue, remove the old one and add the new one
+  //The best option is added to the intention queue
   if (best_option.desire != null) myAgent.queue(best_option.desire, ...best_option.args);
 }
-client.onParcelsSensing(agentLoop);
+client.onParcelsSensing(checkOptions);
 
 class Agent {
   intention_queue = new Array();
   current_intention
 
+  //The loop that runs the intentions
   async intentionLoop() {
     while (true) {
+      //Peek the first intention and removes it from the queue only after it is achieved or rejected to enable stop option
       const intention = this.intention_queue[0];
       if (intention) {
         this.current_intention = intention;
-        try{
+        try {
           await intention.achieve();
         } catch (e) {
           console.log(e);
@@ -164,40 +167,41 @@ class Agent {
     }
   }
 
-  createCurrentIntention() {
-    this.current_intention = new Intention(null, ...[null, null])
-  }
-
+  //Reset the current intention when the agent completes it
   updateCurrentIntention() {
     this.current_intention = new Intention(null, ...[null, null]);
   }
 
-  async intentionRevision(desire, ...args) {
-    if (this.current_intention.getDesire() == BLIND_MOVE && (desire == GO_PICK_UP || desire == GO_PUT_DOWN)){
+  //Revise the intentions to see if the best option is better than the current intention
+  async intentionRevision(desire) {
+    if (this.current_intention.getDesire() == BLIND_MOVE && (desire == GO_PICK_UP || desire == GO_PUT_DOWN)) {
       await this.stop();
     }
   }
 
+  //Insert the new intention in the queue after some checks
   async queue(desire, ...args) {
+    //If the intention is different from the actual one or if it is the same but referring to other objects we add it to the queue
     if (this.current_intention.getDesire() != desire || this.current_intention.getArgs[1] != args[1]) {
+      //If the queue is empty we add the intention
       if (this.intention_queue.length == 0) {
         console.log("Adding new intention to empty queue: " + desire);
         const current = new Intention(desire, ...args);
         this.intention_queue.push(current);
       } else if (desire == GO_PICK_UP) {
+        //If the intention is to pick up we check if there is already an intention to pick up the same parcel
         for (const intention of this.intention_queue) {
           if (intention.getArgs() == args) {
-            // we add only if it is a new intention
             console.log("Adding new intention to queue: " + desire);
             const current = new Intention(desire, ...args);
             this.intention_queue.push(current);
           }
         }
       } else if (desire == GO_PUT_DOWN) {
+        //If the intention is to put down we check if there is already an intention to put down the same parcels and we update it
         var found = false;
         for (const intention of this.intention_queue) {
           if (intention.getDesire() == desire) {
-            // we update the put down intentions
             console.log("Removing old: " + desire + " and adding new intention to queue: ");
             this.intention_queue.splice(this.intention_queue.indexOf(intention), 1);
             const current = new Intention(desire, ...args);
@@ -206,18 +210,12 @@ class Agent {
           }
         }
         if (!found) {
+          //If there is no intention to put down the same parcels we add the intention
           console.log("Adding new intention to queue: " + desire);
           const current = new Intention(desire, ...args);
           this.intention_queue.push(current);
         }
       }
-    }
-  }
-
-  async stopCurrentIntention() {
-    if (this.current_intention.getDesire() != null) {
-      console.log("stop current intention: " + this.current_intention.getDesire());
-      this.current_intention.stop();
     }
   }
 
@@ -302,10 +300,6 @@ class Intention extends Promise {
   }
 }
 
-
-/**
- * Plan library
- */
 const plans = [];
 
 class Plan {
@@ -330,54 +324,6 @@ class Plan {
   }
 }
 
-class MoveToTarget extends Plan {
-
-  #actions;
-
-  constructor(plan) {
-    this.#actions = plan;
-  }
-
-  async moveToTarget() {
-    if (this.#actions.length == 0) return false;
-    var actionsDone = [this.#actions.length];
-
-    if (this.stopped) return false;
-
-    switch (this.#actions[0]) {
-      case "pickup":
-        actionsDone[0] = await client.pickup();
-        break;
-      case "putdown":
-        actionsDone[0] = await client.putdown();
-        break;
-      default:
-        actionsDone[0] = await client.move(this.#actions[0]);
-        break;
-    }
-
-    if (this.stopped) return false;
-
-    for (var i = 1; i < this.#actions.length; i++) {
-      if (this.stopped) return false;
-      if (actionsDone[i - 1]) {
-        switch (this.#actions[i]) {
-          case "pickup":
-            actionsDone[i] = await client.pickup();
-            break;
-          case "putdown":
-            actionsDone[i] = await client.putdown();
-            break;
-          default:
-            actionsDone[i] = await client.move(this.#actions[i]);
-            break;
-        }
-      }
-    }
-    if (this.stopped) return false;
-    return true;
-  }
-}
 class GoPickUp extends Plan {
   isApplicableTo(desire) {
     return desire == GO_PICK_UP;
@@ -551,8 +497,7 @@ class BlindMove extends Plan {
   }
 }
 
-
-myAgent.createCurrentIntention();
+myAgent.updateCurrentIntention();
 plans.push(new GoPickUp());
 plans.push(new BlindMove());
 plans.push(new GoPutDown());
