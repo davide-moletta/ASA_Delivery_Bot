@@ -1,5 +1,6 @@
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 import { planner, goalParser, mapParser, readDomain } from "./test_PDDL_moletta.js";
+import { findDeliveryPoint } from ".././utils/astar_utils.js";
 
 const client = new DeliverooApi(
   "http://localhost:8080/?name=Cannarsi",
@@ -7,8 +8,7 @@ const client = new DeliverooApi(
 );
 
 // TODO:
-// - update metrics based on the server values
-// - weight the random function for the blindMove
+// - after delivery if there are no parcels the agent stops
 // - find a way to make a stoppable common function for the movements execution
 
 const GO_PUT_DOWN = "go_put_down";
@@ -35,17 +35,21 @@ client.onMap((width, height, tiles) => {
   //once the map is complete calls the function to save the string of the map as a PDDL problem
   mapParser(mapData);
 });
-setTimeout(() => { }, 1000);
+setTimeout(() => {}, 1000);
 
 const config = new Map();
 client.onConfig((conf) => {
-  config.set("parGenInt", conf.PARCELS_GENERATION_INTERVAL);
+  config.set("parGenInt", conf.PARCELS_GENERATION_INTERVAL.split("s")[0] * 1000);
   config.set("moveDur", conf.MOVEMENT_DURATION);
   config.set("ageObsDist", conf.AGENTS_OBSERVATION_DISTANCE);
   config.set("parObsDist", conf.PARCELS_OBSERVATION_DISTANCE);
   config.set("parRewAvg", conf.PARCEL_REWARD_AVG);
   config.set("parRewVar", conf.PARCEL_REWARD_VARIANCE);
-  config.set("parDecInt", conf.PARCEL_DECADING_INTERVAL);
+  if (conf.PARCEL_DECADING_INTERVAL == "infinite") {
+    config.set("parDecInt", "infinite")
+  } else {
+    config.set("parDecInt", conf.PARCEL_DECADING_INTERVAL.split("s")[0] * 1000);
+  }
 });
 
 //Read the PDDL domain from the file
@@ -74,29 +78,69 @@ client.onAgentsSensing(async (perceived_agents) => {
   }
 });
 
-//Generates two random points on the map and returns the target coordinates for the blind move
-function blindMove() {
-  var targetX = 0;
-  var targetY = 0;
+//Generate and return random coordinates with higher probability for further positions
+function weightedBlindMove(agentPosition) {
+  const offset = Math.ceil(config.get("parObsDist") / 2);
 
-  do {
-    targetX = Math.floor(Math.random() * maxX);
-    targetY = Math.floor(Math.random() * maxY);
-  } while (mapData[targetX][targetY] == 0);
+  // Calculate the distances from the agent to each coordinate
+  const distances = [];
+  for (let i = offset; i < maxX - offset; i++) {
+    for (let j = offset; j < maxY - offset; j++) {
+      //If the point is not walkable skip it
+      if (mapData[j][i] == 0) continue;
 
-  return [{ x: targetX, y: targetY }, 0]
+      //Calculate the distance from the agent and if it is less than the observation distance skip it (i'm seeing it)
+      var distance = Math.abs(agentPosition.x - j) + Math.abs(agentPosition.y - i);
+      if (distance < offset) continue;
+
+      //Push the coordinates in the array with a number of repetitions based on the distance/5
+      for (let k = 0; k < distance / 5; k++) {
+        distances.push({ x: j, y: i });
+      }
+    }
+  }
+
+  //If there are no points in the distances array return a random point (this should never happen)
+  if (distances.length == 0) {
+    var targetX = 0;
+    var targetY = 0;
+    do {
+      targetX = Math.floor(Math.random() * maxX);
+      targetY = Math.floor(Math.random() * maxY);
+    } while (mapData[targetX][targetY] == 0);
+  
+    return [{ x: targetX, y: targetY }, 0]
+  }
+  
+  // Sort the coordinates randomly
+  distances.sort(() => Math.random() - 0.5);
+  return [distances[Math.floor(Math.random() * distances.length)], 0];
 }
 
 //Calculate an ideal score based on the beliefs of the agent to select the best option
 function averageScore(args, desire, actualScore, parcelsToDeliver) {
   if (desire == GO_PICK_UP) {
+    //If there is no decaying time prioritize picking up parcels (MAX_VALUE to be changed with a threshold value to go deliver)
+    if (config.get("parDecInt") == "infinite") return Number.MAX_VALUE;
+
     var distance = Math.abs(Math.round(args.x) - Math.round(me.x)) + Math.abs(Math.round(args.y) - Math.round(me.y));
-    return (actualScore + args.reward) - ((parcelsToDeliver + 1) * distance);
+    //The score to pick up a parcel is the actual score plus the reward of the parcel
+    //minus the number of parcels to deliver plus the one we want to pick up multiplied by the time to make a move times the number of moves required to reach the parcel 
+    //divided by the parcel decaying time
+    return ((actualScore + args.reward) - (((parcelsToDeliver + 1) * (config.get("moveDur") * distance)) / config.get("parDecInt")));
   }
   if (desire == GO_PUT_DOWN) {
-    if (parcelsToDeliver == 0) return Number.MIN_VALUE
+    if (parcelsToDeliver == 0) return Number.MIN_VALUE;
+    //In this way if we have infinite dacaying time we return max value for pick up intentions and max value divided by 2 for delivery intentions
+    //As a result pick up intentions will be prioritized and delivery intentions will be executed only if there are no parcels to pick up
+    if (config.get("parDecInt") == "infinite") return Number.MAX_VALUE/2;
+    
+    var closestDelivery = findDeliveryPoint(me.x, me.y, delivery_points);
+    var distance = Math.abs(Math.round(closestDelivery.x) - Math.round(me.x)) + Math.abs(Math.round(closestDelivery.y) - Math.round(me.y));
 
-    return actualScore - parcelsToDeliver + 10 * parcels.size;
+    //The score to deliver the parcels is the actual score minus the number of parcels to deliver multiplied by the time to make a move times the number of moves 
+    //required to reach the delivery point divided by the parcel dacaying time
+    return ((actualScore) - (parcelsToDeliver * (config.get("moveDur") * distance) / config.get("parDecInt")));
   }
 }
 
@@ -135,7 +179,7 @@ function checkOptions() {
   //If no best option is found, the agent performs a blind move otherwise the agents calls the intention revision to see if the best option is better than the current intention
   if (best_option.desire == null) {
     console.log("No best option, going for the blind move");
-    best_option = { desire: BLIND_MOVE, args: blindMove() };
+    best_option = { desire: BLIND_MOVE, args: weightedBlindMove({ x: me.x, y: me.y }) };
   } else {
     myAgent.intentionRevision(best_option.desire)
   }
