@@ -1,26 +1,20 @@
-import fs, { writeFile } from 'fs';
-import { onlineSolver, PddlExecutor, PddlProblem, Beliefset } from "@unitn-asa/pddl-client";
+import fs from 'fs';
+import { onlineSolver, PddlProblem, Beliefset } from "@unitn-asa/pddl-client";
 
 const GO_PUT_DOWN = "go_put_down";
 const GO_PICK_UP = "go_pick_up";
-const GO_TO = "go_to";
 
 //Used to store the map and parse it only one time
 const beliefMap = new Beliefset();
-var domain, mapObjects = "";
+var domain, mapObjects = "", beliefMapString = "";
 
-function readFile(path) {
-    return new Promise((res, rej) => {
-        fs.readFile(path, 'utf8', (err, data) => {
+async function readDomain() {
+    domain = await new Promise((res, rej) => {
+        fs.readFile('./Agent/single_agent_PDDL/domain.pddl', 'utf8', (err, data) => {
             if (err) rej(err)
             else res(data)
         })
     })
-}
-
-async function readDomain() {
-    //Read domain from domain file
-    domain = await readFile('./Agent/single_agent_PDDL/domain.pddl');
 }
 
 function mapObjectParser() {
@@ -74,16 +68,17 @@ function mapParser(map) {
         }
     }
     mapObjectParser();
+    beliefMapString = beliefMap.toPddlString();
 }
 
 //Parse the parcels sent by the client and add them to the beliefSet
-function parcelsparser(parcels, me,  beliefs) {
+function parcelsparser(parcels, me, beliefs) {
     parcels.forEach(parcel => {
-        if(parcel.carriedBy == me.id){
+        if (parcel.carriedBy == me.id) {
             beliefs.declare("holding me_" + me.id + " p_" + parcel.id);
-        }else{
+        } else {
             beliefs.declare("in p_" + parcel.id + " c_" + parcel.x + "_" + parcel.y);
-        } 
+        }
     });
 }
 
@@ -101,9 +96,7 @@ function goalParser(desire, args, me) {
     if (desire == GO_PICK_UP) {
         goal += " (holding me_" + me + " p_" + args.id + ")"
     } else if (desire == GO_PUT_DOWN) {
-        for (const a of args) {
-            goal += " (delivered p_" + a.id + ")"
-        }
+        goal += " (delivered p_" + args[0].id + ")"
     } else {
         goal += " (at me_" + me + " c_" + args.x + "_" + args.y + ")"
     }
@@ -154,17 +147,18 @@ async function planner(parcels, agents, me, goal) {
     var pddlProblem = new PddlProblem(
         'agentPRO', //name
         mapObjects + "\n    " + objectsParser(beliefs), //objects
-        beliefMap.toPddlString() + " " + beliefs.toPddlString(), //init
+        beliefMapString + " " + beliefs.toPddlString(), //init
         goal //goal
     )
 
-    //Print the PDDL problem as a pddlString
+    //parse the PDDL problem as a pddlString
     let problem = pddlProblem.toPddlString();
-    
+
     //Call the onlineSolver function and return the plan if it exists
     var plan = await onlineSolver(domain, problem);
 
+    if (plan == null) return "no plan found";
     return planParser(plan);
 }
 
-export { planner, goalParser, mapParser, readDomain }; //, parcelsparser, agentsParser, meParser };
+export { planner, goalParser, mapParser, readDomain };

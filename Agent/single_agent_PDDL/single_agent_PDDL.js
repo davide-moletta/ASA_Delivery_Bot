@@ -8,8 +8,8 @@ const client = new DeliverooApi(
 );
 
 // TODO:
-// - after delivery if there are no parcels the agent stops
-// - find a way to make a stoppable common function for the movements execution
+// - rewrite code better
+// - optimize the code
 
 const GO_PUT_DOWN = "go_put_down";
 const GO_PICK_UP = "go_pick_up";
@@ -19,6 +19,8 @@ let maxX = 0;
 let maxY = 0;
 var mapData;
 const delivery_points = [];
+
+const plans = [];
 
 client.onMap((width, height, tiles) => {
   maxX = width;
@@ -35,7 +37,7 @@ client.onMap((width, height, tiles) => {
   //once the map is complete calls the function to save the string of the map as a PDDL problem
   mapParser(mapData);
 });
-setTimeout(() => {}, 1000);
+setTimeout(() => { }, 1000);
 
 const config = new Map();
 client.onConfig((conf) => {
@@ -108,10 +110,10 @@ function weightedBlindMove(agentPosition) {
       targetX = Math.floor(Math.random() * maxX);
       targetY = Math.floor(Math.random() * maxY);
     } while (mapData[targetX][targetY] == 0);
-  
+
     return [{ x: targetX, y: targetY }, 0]
   }
-  
+
   // Sort the coordinates randomly
   distances.sort(() => Math.random() - 0.5);
   return [distances[Math.floor(Math.random() * distances.length)], 0];
@@ -120,10 +122,11 @@ function weightedBlindMove(agentPosition) {
 //Calculate an ideal score based on the beliefs of the agent to select the best option
 function averageScore(args, desire, actualScore, parcelsToDeliver) {
   if (desire == GO_PICK_UP) {
-    //If there is no decaying time prioritize picking up parcels (MAX_VALUE to be changed with a threshold value to go deliver)
-    if (config.get("parDecInt") == "infinite") return Number.MAX_VALUE;
-
     var distance = Math.abs(Math.round(args.x) - Math.round(me.x)) + Math.abs(Math.round(args.y) - Math.round(me.y));
+
+    //If there is no decaying time prioritize picking up parcels (MAX_VALUE to be changed with a threshold value to go deliver)
+    if (config.get("parDecInt") == 'infinite') return (1500 - distance);
+
     //The score to pick up a parcel is the actual score plus the reward of the parcel
     //minus the number of parcels to deliver plus the one we want to pick up multiplied by the time to make a move times the number of moves required to reach the parcel 
     //divided by the parcel decaying time
@@ -133,14 +136,20 @@ function averageScore(args, desire, actualScore, parcelsToDeliver) {
     if (parcelsToDeliver == 0) return Number.MIN_VALUE;
     //In this way if we have infinite dacaying time we return max value for pick up intentions and max value divided by 2 for delivery intentions
     //As a result pick up intentions will be prioritized and delivery intentions will be executed only if there are no parcels to pick up
-    if (config.get("parDecInt") == "infinite") return Number.MAX_VALUE/2;
-    
     var closestDelivery = findDeliveryPoint(me.x, me.y, delivery_points);
     var distance = Math.abs(Math.round(closestDelivery.x) - Math.round(me.x)) + Math.abs(Math.round(closestDelivery.y) - Math.round(me.y));
 
+    if (config.get("parDecInt") == 'infinite') {
+      if (distance <= 4) {
+        return Number.MAX_VALUE;
+      } else {
+        return 500;
+      }
+    }
+
     //The score to deliver the parcels is the actual score minus the number of parcels to deliver multiplied by the time to make a move times the number of moves 
     //required to reach the delivery point divided by the parcel dacaying time
-    return ((actualScore) - (parcelsToDeliver * (config.get("moveDur") * distance) / config.get("parDecInt")));
+    return ((actualScore + actualScore / 10) - (parcelsToDeliver * (config.get("moveDur") * distance) / config.get("parDecInt")));
   }
 }
 
@@ -150,42 +159,44 @@ function checkOptions() {
   const deliveries = [];
   var actualScore = 0;
   var parcelsToDeliver = 0;
+  var best_option;
 
-  //For each parcel checks if it is carryed by the agent or not and adds the option to pick it up or put it down
-  for (const parcel of parcels.values()) {
-    if (!parcel.carriedBy) {
-      options.push({ desire: GO_PICK_UP, args: [parcel, parcel.id] });
-    } else if (parcel.carriedBy == me.id) {
-      actualScore += parcel.reward;
-      parcelsToDeliver++;
-      deliveries.push(parcel);
+  if (parcels.length != 0) {
+    //For each parcel checks if it is carryed by the agent or not and adds the option to pick it up or put it down
+    for (const parcel of parcels.values()) {
+      if (!parcel.carriedBy) {
+        options.push({ desire: GO_PICK_UP, args: [parcel, parcel.id] });
+      } else if (parcel.carriedBy == me.id) {
+        actualScore += parcel.reward;
+        parcelsToDeliver++;
+        deliveries.push(parcel);
+      }
     }
-  }
-  options.push({ desire: GO_PUT_DOWN, args: deliveries });
+    if (parcelsToDeliver != 0) options.push({ desire: GO_PUT_DOWN, args: deliveries });
 
-  //Check all the options to find the best one
-  let best_option = { desire: null, args: null };
-  let best_score = Number.MIN_VALUE;
-
-  for (const option of options) {
-    let current_desire = option.desire;
-    let current_score = averageScore(option.args[0], current_desire, actualScore, parcelsToDeliver);
-    if (current_score > best_score) {
-      best_option = { desire: option.desire, args: option.args }
-      best_score = current_score;
+    //Check all the options to find the best one
+    best_option = { desire: null, args: null };
+    let best_score = Number.MIN_VALUE;
+    for (const option of options) {
+      let current_score = averageScore(option.args[0], option.desire, actualScore, parcelsToDeliver);
+      if (current_score > best_score) {
+        best_option = { desire: option.desire, args: option.args }
+        best_score = current_score;
+      }
     }
+  } else {
+    best_option = { desire: BLIND_MOVE, args: weightedBlindMove({ x: me.x, y: me.y }) };
   }
 
   //If no best option is found, the agent performs a blind move otherwise the agents calls the intention revision to see if the best option is better than the current intention
   if (best_option.desire == null) {
-    console.log("No best option, going for the blind move");
     best_option = { desire: BLIND_MOVE, args: weightedBlindMove({ x: me.x, y: me.y }) };
   } else {
     myAgent.intentionRevision(best_option.desire)
   }
 
   //The best option is added to the intention queue
-  if (best_option.desire != null) myAgent.queue(best_option.desire, ...best_option.args);
+  myAgent.queue(best_option.desire, ...best_option.args);
 }
 client.onParcelsSensing(checkOptions);
 
@@ -229,7 +240,7 @@ class Agent {
     if (this.current_intention.getDesire() != desire || this.current_intention.getArgs[1] != args[1]) {
       //If the queue is empty we add the intention
       if (this.intention_queue.length == 0) {
-        console.log("Adding new intention to empty queue: " + desire);
+        console.log("Adding new intention to empty queue: " + desire + " --- " + args[0].x + " - " + args[0].y);
         const current = new Intention(desire, ...args);
         this.intention_queue.push(current);
       } else if (desire == GO_PICK_UP) {
@@ -323,28 +334,25 @@ class Intention extends Promise {
 
       if (plan.isApplicableTo(this.#desire)) {
         this.#current_plan = plan;
-        console.log("achieving desire: " + this.#desire + " with plan: " + plan);
+        console.log("achieving desire: " + this.getDesire());
         try {
           const plan_res = await plan.execute(this.#desire, ...this.#args);
           this.#resolve(plan_res);
 
-          console.log("plan: " + plan + " succesfully achieved");
+          console.log("plan: " + this.getDesire() + " -- " + this.getArgs() + " succesfully achieved");
           myAgent.updateCurrentIntention();
 
           return plan_res;
         } catch (error) {
-          console.log("plan: " + plan + " failed while trying to achieve");
+          console.log("plan: " + this.getDesire() + " -- " + this.getArgs() + " failed while trying to achieve");
         }
       }
     }
 
     this.#reject();
-    console.log("no plan satisfied the desire ", this.#desire, ...this.#args);
-    throw "no plan satisfied the desire " + this.#desire;
+    throw "no plan satisfied the desire " + this.getDesire() + " -- " + this.getArgs();
   }
 }
-
-const plans = [];
 
 class Plan {
   #stopped = false;
@@ -358,8 +366,49 @@ class Plan {
   get stopped() {
     return this.#stopped;
   }
+  setStopped(value) {
+    this.#stopped = value;
+  }
 
   #sub_intentions = [];
+
+  async planExecutor(plan) {
+    var actionsDone = [plan.length];
+    if (this.stopped) throw ['stopped'];
+
+    switch (plan[0]) {
+      case "pickup":
+        actionsDone[0] = await client.pickup();
+        break;
+      case "putdown":
+        actionsDone[0] = await client.putdown();
+        break;
+      default:
+        actionsDone[0] = await client.move(plan[0]);
+        break;
+    }
+
+    if (this.stopped) throw ['stopped'];
+
+    for (var i = 1; i < plan.length; i++) {
+      if (this.stopped) throw ['stopped'];
+
+      if (actionsDone[i - 1]) {
+        switch (plan[i]) {
+          case "pickup":
+            actionsDone[i] = await client.pickup();
+            break;
+          case "putdown":
+            actionsDone[i] = await client.putdown();
+            break;
+          default:
+            actionsDone[i] = await client.move(plan[i]);
+            break;
+        }
+      }
+    }
+    return true;
+  }
 
   async subIntention(desire, args) {
     const sub_intention = new Intention(desire, args);
@@ -375,54 +424,16 @@ class GoPickUp extends Plan {
 
   async execute(desire, ...args) {
     // Create PDDL plan    
-    if (this.stopped) throw ['stopped']; // if stopped then quit
+    if (this.stopped) throw ['stopped'];
     var goal = goalParser(desire, args[0], me.id);
 
-    if (this.stopped) throw ['stopped']; // if stopped then quit
+    if (this.stopped) throw ['stopped'];
     var plan = await planner(parcels, agents, me, goal);
+    if (plan == "no plan found") throw ['no plan found'];
+
     console.log('plan: ', plan);
 
-    if (this.stopped) throw ['stopped']; // if stopped then quit  
-
-
-    if (plan.length == 0) return false;
-    var actionsDone = [plan.length];
-
-    if (this.stopped) throw ['stopped'];
-
-    switch (plan[0]) {
-      case "pickup":
-        actionsDone[0] = await client.pickup();
-        break;
-      case "putdown":
-        actionsDone[0] = await client.putdown();
-        break;
-      default:
-        actionsDone[0] = await client.move(plan[0]);
-        break;
-    }
-
-    if (this.stopped) throw ['stopped'];
-
-    for (var i = 1; i < plan.length; i++) {
-      if (this.stopped) throw ['stopped'];
-
-      if (actionsDone[i - 1]) {
-        switch (plan[i]) {
-          case "pickup":
-            actionsDone[i] = await client.pickup();
-            break;
-          case "putdown":
-            actionsDone[i] = await client.putdown();
-            break;
-          default:
-            actionsDone[i] = await client.move(plan[i]);
-            break;
-        }
-      }
-    }
-    if (this.stopped) throw ['stopped'];
-    return true;
+    return await this.planExecutor(plan);
   }
 }
 
@@ -433,53 +444,17 @@ class GoPutDown extends Plan {
 
   async execute(desire, ...args) {
     // Create PDDL plan    
-    if (this.stopped) throw ['stopped']; // if stopped then quit
+    if (this.stopped) throw ['stopped'];
     var goal = goalParser(desire, args, me.id);
 
-    if (this.stopped) throw ['stopped']; // if stopped then quit
+    if (this.stopped) throw ['stopped'];
     var plan = await planner(parcels, agents, me, goal);
+    if (plan == "no plan found") throw ['no plan found'];
+
     console.log('plan: ', plan);
 
-    if (this.stopped) throw ['stopped']; // if stopped then quit
-
-
-    if (plan.length == 0) return false;
-    var actionsDone = [plan.length];
-
-    if (this.stopped) throw ['stopped'];
-
-    switch (plan[0]) {
-      case "pickup":
-        actionsDone[0] = await client.pickup();
-        break;
-      case "putdown":
-        actionsDone[0] = await client.putdown();
-        break;
-      default:
-        actionsDone[0] = await client.move(plan[0]);
-        break;
-    }
-
-    if (this.stopped) throw ['stopped'];
-
-    for (var i = 1; i < plan.length; i++) {
-      if (this.stopped) throw ['stopped'];
-
-      if (actionsDone[i - 1]) {
-        switch (plan[i]) {
-          case "pickup":
-            actionsDone[i] = await client.pickup();
-            break;
-          case "putdown":
-            actionsDone[i] = await client.putdown();
-            break;
-          default:
-            actionsDone[i] = await client.move(plan[i]);
-            break;
-        }
-      }
-    }
-    if (this.stopped) throw ['stopped'];
+    await this.planExecutor(plan);
+    parcels.clear();
     return true;
   }
 }
@@ -491,53 +466,17 @@ class BlindMove extends Plan {
 
   async execute(desire, ...args) {
     // Create PDDL plan    
-    if (this.stopped) throw ['stopped']; // if stopped then quit
+    this.setStopped(false);
     var goal = goalParser(desire, args[0], me.id);
 
-    if (this.stopped) throw ['stopped']; // if stopped then quit
+    if (this.stopped) throw ['stopped'];
     var plan = await planner(parcels, agents, me, goal);
+
+    if (plan == "no plan found") throw ['no plan found'];
+
     console.log('plan: ', plan);
 
-    if (this.stopped) throw ['stopped']; // if stopped then quit
-
-    if (plan.length == 0) return false;
-    var actionsDone = [plan.length];
-
-    if (this.stopped) throw ['stopped'];
-
-    switch (plan[0]) {
-      case "pickup":
-        actionsDone[0] = await client.pickup();
-        break;
-      case "putdown":
-        actionsDone[0] = await client.putdown();
-        break;
-      default:
-        actionsDone[0] = await client.move(plan[0]);
-        break;
-    }
-
-    if (this.stopped) throw ['stopped'];
-
-    for (var i = 1; i < plan.length; i++) {
-      if (this.stopped) throw ['stopped'];
-
-      if (actionsDone[i - 1]) {
-        switch (plan[i]) {
-          case "pickup":
-            actionsDone[i] = await client.pickup();
-            break;
-          case "putdown":
-            actionsDone[i] = await client.putdown();
-            break;
-          default:
-            actionsDone[i] = await client.move(plan[i]);
-            break;
-        }
-      }
-    }
-    if (this.stopped) throw ['stopped'];
-    return true;
+    return await this.planExecutor(plan);
   }
 }
 
