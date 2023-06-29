@@ -10,6 +10,7 @@ const client = new DeliverooApi(
 // TODO:
 // - add memory
 // - optimize the code (local planner)
+// - see the image to follow path required by professor
 
 const GO_PUT_DOWN = "go_put_down";
 const GO_PICK_UP = "go_pick_up";
