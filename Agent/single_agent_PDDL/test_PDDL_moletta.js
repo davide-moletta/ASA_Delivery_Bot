@@ -73,13 +73,17 @@ function mapParser(map) {
 
 //Parse the parcels sent by the client and add them to the beliefSet
 function parcelsparser(parcels, me, beliefs) {
-    parcels.forEach(parcel => {
-        if (parcel.carriedBy == me.id) {
-            beliefs.declare("holding me_" + me.id + " p_" + parcel.id);
-        } else {
-            beliefs.declare("in p_" + parcel.id + " c_" + parcel.x + "_" + parcel.y);
-        }
-    });
+    if (parcels.size == 0) {
+        beliefs.declare("in p_default c_default_default");
+    } else {
+        parcels.forEach(parcel => {
+            if (parcel.carriedBy == me.id) {
+                beliefs.declare("holding me_" + me.id + " p_" + parcel.id);
+            } else {
+                beliefs.declare("in p_" + parcel.id + " c_" + parcel.x + "_" + parcel.y);
+            }
+        });
+    }
 }
 
 //Parse the "enemy" agents sent by the client and add them to the beliefSet
@@ -157,8 +161,6 @@ async function planner(parcels, agents, me, goal) {
 
     //parse the PDDL problem as a pddlString
     let problem = pddlProblem.toPddlString();
-
-    console.log(problem);
 
     //Call the onlineSolver function and return the plan if it exists
     var plan = await onlineSolver(domain, problem);

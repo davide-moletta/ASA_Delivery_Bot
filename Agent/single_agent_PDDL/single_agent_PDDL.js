@@ -8,9 +8,8 @@ const client = new DeliverooApi(
 );
 
 // TODO:
-// - rewrite code better
-// - optimize the code
-// - if an agent get
+// - add memory
+// - optimize the code (local planner)
 
 const GO_PUT_DOWN = "go_put_down";
 const GO_PICK_UP = "go_pick_up";
@@ -54,6 +53,7 @@ client.onConfig((conf) => {
   } else {
     config.set("parDecInt", conf.PARCEL_DECADING_INTERVAL.split("s")[0] * 1000); //Parcel decading interval in milliseconds
   }
+  config.set("clock", conf.CLOCK); //Clock interval in milliseconds
 });
 
 //Read the PDDL domain from the file
@@ -157,7 +157,7 @@ function averageScore(args, desire, actualScore, parcelsToDeliver) {
 }
 
 //Check the environment to search for the best possible action to take
-function checkOptions() {
+async function checkOptions() {
   const options = [];
   const deliveries = [];
   var actualScore = 0;
@@ -201,7 +201,11 @@ function checkOptions() {
   //The best option is added to the intention queue
   myAgent.queue(best_option.desire, ...best_option.args);
 }
-client.onParcelsSensing(checkOptions);
+//client.onParcelsSensing(checkOptions);
+setInterval(async function () {
+  console.log("checking options");
+  await checkOptions();
+}, 500);
 
 class Agent {
   intention_queue = new Array();
@@ -414,9 +418,7 @@ class Plan {
               actionsDone[i] = await client.move(plan[i]);
               break;
           }
-        } else {
-          throw e
-        }
+        } 
       }
       return true;
     } catch (e) {
@@ -438,7 +440,7 @@ class GoPickUp extends Plan {
 
   async execute(desire, ...args) {
     // Create PDDL plan    
-    if (this.stopped) throw ['stopped'];
+    this.setStopped(false);
     var goal = goalParser(desire, args[0], me.id);
 
     if (this.stopped) throw ['stopped'];
@@ -458,7 +460,7 @@ class GoPutDown extends Plan {
 
   async execute(desire, ...args) {
     // Create PDDL plan    
-    if (this.stopped) throw ['stopped'];
+    this.setStopped(false);
     var goal = goalParser(desire, args, me.id);
 
     if (this.stopped) throw ['stopped'];

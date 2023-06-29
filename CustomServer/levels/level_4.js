@@ -12,7 +12,7 @@ module.exports = {
 
     PARCEL_REWARD_AVG: 55,          // default is 30
     PARCEL_REWARD_VARIANCE: 45,     // default is 10
-    PARCEL_DECADING_INTERVAL: 'infinite', // options are '1s', '2s', '5s', '10s', 'infinite' (DEFAULT)
+    PARCEL_DECADING_INTERVAL: '2s', // options are '1s', '2s', '5s', '10s', 'infinite' (DEFAULT)
 
     RANDOMLY_MOVING_AGENTS: 1,  // default is 2
     RANDOM_AGENT_SPEED: '5s'    // options are '1s', '2s' (DEFAULT), '5s', '10s'
