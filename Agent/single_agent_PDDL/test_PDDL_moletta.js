@@ -21,7 +21,7 @@ function mapObjectParser() {
     for (const o of beliefMap.objects) {
         mapObjects += o + " ";
     }
-    mapObjects += "- c";
+    mapObjects += "c_default_default - c";
 }
 
 //Check the adjacent cells of the one called
@@ -84,9 +84,13 @@ function parcelsparser(parcels, me, beliefs) {
 
 //Parse the "enemy" agents sent by the client and add them to the beliefSet
 function agentsParser(agents, beliefs) {
-    agents.forEach(agent => {
-        beliefs.declare("in a_" + agent.id + " c_" + agent.x + "_" + agent.y);
-    });
+    if (agents.size == 0) {
+        beliefs.declare("occ a_default c_default_default");
+    } else {
+        agents.forEach(agent => {
+            beliefs.declare("occ a_" + agent.id + " c_" + agent.x + "_" + agent.y);
+        });
+    }
 }
 
 //Parse the goals sent by the client and add them to the goal
@@ -153,6 +157,8 @@ async function planner(parcels, agents, me, goal) {
 
     //parse the PDDL problem as a pddlString
     let problem = pddlProblem.toPddlString();
+
+    console.log(problem);
 
     //Call the onlineSolver function and return the plan if it exists
     var plan = await onlineSolver(domain, problem);

@@ -10,6 +10,7 @@ const client = new DeliverooApi(
 // TODO:
 // - rewrite code better
 // - optimize the code
+// - if an agent get
 
 const GO_PUT_DOWN = "go_put_down";
 const GO_PICK_UP = "go_pick_up";
@@ -34,23 +35,24 @@ client.onMap((width, height, tiles) => {
       delivery_points.push([tile.x, tile.y]);
     }
   });
-  //once the map is complete calls the function to save the string of the map as a PDDL problem
+  //Once the map is complete calls the function to save the string of the map as a PDDL problem
   mapParser(mapData);
 });
 setTimeout(() => { }, 1000);
 
+//Get the configuration from the server to get values used to perform score evaluation
 const config = new Map();
 client.onConfig((conf) => {
-  config.set("parGenInt", conf.PARCELS_GENERATION_INTERVAL.split("s")[0] * 1000);
-  config.set("moveDur", conf.MOVEMENT_DURATION);
-  config.set("ageObsDist", conf.AGENTS_OBSERVATION_DISTANCE);
-  config.set("parObsDist", conf.PARCELS_OBSERVATION_DISTANCE);
-  config.set("parRewAvg", conf.PARCEL_REWARD_AVG);
-  config.set("parRewVar", conf.PARCEL_REWARD_VARIANCE);
+  config.set("parGenInt", conf.PARCELS_GENERATION_INTERVAL.split("s")[0] * 1000); //Parcel generation interval in milliseconds (not used)
+  config.set("moveDur", conf.MOVEMENT_DURATION); //Movement duration in milliseconds
+  config.set("ageObsDist", conf.AGENTS_OBSERVATION_DISTANCE); //Agent observation distance (not used)
+  config.set("parObsDist", conf.PARCELS_OBSERVATION_DISTANCE); //Parcel observation distance
+  config.set("parRewAvg", conf.PARCEL_REWARD_AVG); //Parcel reward average (not used)
+  config.set("parRewVar", conf.PARCEL_REWARD_VARIANCE); //Parcel reward variance (not used)
   if (conf.PARCEL_DECADING_INTERVAL == "infinite") {
-    config.set("parDecInt", "infinite")
+    config.set("parDecInt", "infinite") //Parcel decading interval infinite
   } else {
-    config.set("parDecInt", conf.PARCEL_DECADING_INTERVAL.split("s")[0] * 1000);
+    config.set("parDecInt", conf.PARCEL_DECADING_INTERVAL.split("s")[0] * 1000); //Parcel decading interval in milliseconds
   }
 });
 
@@ -58,12 +60,10 @@ client.onConfig((conf) => {
 readDomain();
 
 const me = {};
-client.onYou(({ id, name, x, y, score }) => {
+client.onYou(({ id, x, y }) => {
   me.id = id;
-  me.name = name;
   me.x = x;
   me.y = y;
-  me.score = score;
 });
 
 const parcels = new Map();
@@ -76,15 +76,18 @@ client.onParcelsSensing(async (perceived_parcels) => {
 const agents = new Map();
 client.onAgentsSensing(async (perceived_agents) => {
   for (const a of perceived_agents) {
+    a.x = Math.round(a.x);
+    a.y = Math.round(a.y);
     agents.set(a.id, a);
   }
 });
 
 //Generate and return random coordinates with higher probability for further positions
 function weightedBlindMove(agentPosition) {
+  //Create an offset to avoid cells in the FOV of the agent
   const offset = Math.ceil(config.get("parObsDist") / 2);
 
-  // Calculate the distances from the agent to each coordinate
+  //Calculate the distances from the agent to each coordinate
   const distances = [];
   for (let i = offset; i < maxX - offset; i++) {
     for (let j = offset; j < maxY - offset; j++) {
@@ -102,7 +105,7 @@ function weightedBlindMove(agentPosition) {
     }
   }
 
-  //If there are no points in the distances array return a random point (this should never happen)
+  //If there are no points in the distances array return a random walkable point (this should never happen)
   if (distances.length == 0) {
     var targetX = 0;
     var targetY = 0;
@@ -114,7 +117,7 @@ function weightedBlindMove(agentPosition) {
     return [{ x: targetX, y: targetY }, 0]
   }
 
-  // Sort the coordinates randomly
+  //Sort the coordinates randomly and return a random one
   distances.sort(() => Math.random() - 0.5);
   return [distances[Math.floor(Math.random() * distances.length)], 0];
 }
@@ -124,21 +127,20 @@ function averageScore(args, desire, actualScore, parcelsToDeliver) {
   if (desire == GO_PICK_UP) {
     var distance = Math.abs(Math.round(args.x) - Math.round(me.x)) + Math.abs(Math.round(args.y) - Math.round(me.y));
 
-    //If there is no decaying time prioritize picking up parcels (MAX_VALUE to be changed with a threshold value to go deliver)
+    //If there is no decaying time prioritize picking up parcels (the one to be picked up will be the closest one)
     if (config.get("parDecInt") == 'infinite') return (1500 - distance);
 
-    //The score to pick up a parcel is the actual score plus the reward of the parcel
-    //minus the number of parcels to deliver plus the one we want to pick up multiplied by the time to make a move times the number of moves required to reach the parcel 
+    //If the decaying time is not infinite, the score to pick up a parcel is the actual score plus the reward of the parcel
+    //minus the number of parcels to deliver plus the one we want to pick up multiplied by the time required to make a move times the distance to reach the parcel 
     //divided by the parcel decaying time
     return ((actualScore + args.reward) - (((parcelsToDeliver + 1) * (config.get("moveDur") * distance)) / config.get("parDecInt")));
   }
   if (desire == GO_PUT_DOWN) {
-    if (parcelsToDeliver == 0) return Number.MIN_VALUE;
-    //In this way if we have infinite dacaying time we return max value for pick up intentions and max value divided by 2 for delivery intentions
-    //As a result pick up intentions will be prioritized and delivery intentions will be executed only if there are no parcels to pick up
+    //Find closest delivery point and calculate the distance from it
     var closestDelivery = findDeliveryPoint(me.x, me.y, delivery_points);
     var distance = Math.abs(Math.round(closestDelivery.x) - Math.round(me.x)) + Math.abs(Math.round(closestDelivery.y) - Math.round(me.y));
 
+    //If the parcel decaying time is infinite and the distance is less than 4 prioritize delivering the parcel otherwise prioritize picking up parcels
     if (config.get("parDecInt") == 'infinite') {
       if (distance <= 4) {
         return Number.MAX_VALUE;
@@ -147,8 +149,9 @@ function averageScore(args, desire, actualScore, parcelsToDeliver) {
       }
     }
 
-    //The score to deliver the parcels is the actual score minus the number of parcels to deliver multiplied by the time to make a move times the number of moves 
-    //required to reach the delivery point divided by the parcel dacaying time
+    //If the parcel decaying time is not infinite, the score to deliver the parcels is the actual score plus the actual score divided by ten
+    //minus the number of parcels to deliver multiplied by the time required to make a move times the distance from the delivery point 
+    //divided by the parcel dacaying time
     return ((actualScore + actualScore / 10) - (parcelsToDeliver * (config.get("moveDur") * distance) / config.get("parDecInt")));
   }
 }
@@ -339,18 +342,23 @@ class Intention extends Promise {
           const plan_res = await plan.execute(this.#desire, ...this.#args);
           this.#resolve(plan_res);
 
-          console.log("plan: " + this.getDesire() + " -- " + this.getArgs() + " succesfully achieved");
+          console.log("plan: " + this.getDesire() + " -- succesfully achieved");
           myAgent.updateCurrentIntention();
 
           return plan_res;
-        } catch (error) {
-          console.log("plan: " + this.getDesire() + " -- " + this.getArgs() + " failed while trying to achieve");
+        } catch (e) {
+          console.log("plan: " + this.getDesire() + " -- failed while trying to achieve");
+          this.#current_plan.stop();
+          this.#stopped = true;
         }
       }
     }
 
+    // if stopped then quit
+    if (this.stopped) throw ['stopped intention'];
+
     this.#reject();
-    throw "no plan satisfied the desire " + this.getDesire() + " -- " + this.getArgs();
+    throw "no plan satisfied the desire " + this.getDesire();
   }
 }
 
@@ -376,38 +384,44 @@ class Plan {
     var actionsDone = [plan.length];
     if (this.stopped) throw ['stopped'];
 
-    switch (plan[0]) {
-      case "pickup":
-        actionsDone[0] = await client.pickup();
-        break;
-      case "putdown":
-        actionsDone[0] = await client.putdown();
-        break;
-      default:
-        actionsDone[0] = await client.move(plan[0]);
-        break;
-    }
+    try {
+      switch (plan[0]) {
+        case "pickup":
+          actionsDone[0] = await client.pickup();
+          break;
+        case "putdown":
+          actionsDone[0] = await client.putdown();
+          break;
+        default:
+          actionsDone[0] = await client.move(plan[0]);
+          break;
+      }
 
-    if (this.stopped) throw ['stopped'];
-
-    for (var i = 1; i < plan.length; i++) {
       if (this.stopped) throw ['stopped'];
 
-      if (actionsDone[i - 1]) {
-        switch (plan[i]) {
-          case "pickup":
-            actionsDone[i] = await client.pickup();
-            break;
-          case "putdown":
-            actionsDone[i] = await client.putdown();
-            break;
-          default:
-            actionsDone[i] = await client.move(plan[i]);
-            break;
+      for (var i = 1; i < plan.length; i++) {
+        if (this.stopped) throw ['stopped'];
+
+        if (actionsDone[i - 1]) {
+          switch (plan[i]) {
+            case "pickup":
+              actionsDone[i] = await client.pickup();
+              break;
+            case "putdown":
+              actionsDone[i] = await client.putdown();
+              break;
+            default:
+              actionsDone[i] = await client.move(plan[i]);
+              break;
+          }
+        } else {
+          throw e
         }
       }
+      return true;
+    } catch (e) {
+      throw ['stopped'];
     }
-    return true;
   }
 
   async subIntention(desire, args) {
@@ -475,7 +489,6 @@ class BlindMove extends Plan {
     if (plan == "no plan found") throw ['no plan found'];
 
     console.log('plan: ', plan);
-
     return await this.planExecutor(plan);
   }
 }

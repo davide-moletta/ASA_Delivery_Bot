@@ -9,6 +9,7 @@
     (:predicates
         (at ?me - me ?c - c)
         (in ?p - p ?c - c)
+        (occ ?a - a ?c - c)
 
         (is-delivery ?c - c)
         (is-blocked ?c - c)
@@ -23,11 +24,12 @@
     )
 
     (:action up
-        :parameters (?me - me ?c1 - c ?c2 - c)
+        :parameters (?me - me ?c1 - c ?c2 - c ?a - a)
         :precondition (and
             (neighbourUp ?c1 ?c2)
             (not (is-blocked ?c2))
             (at ?me ?c1)
+            (not (occ ?a ?c2))
         )
         :effect (and
             (at ?me ?c2)
@@ -36,11 +38,12 @@
     )
 
     (:action down
-        :parameters (?me - me ?c1 - c ?c2 - c)
+        :parameters (?me - me ?c1 - c ?c2 - c ?a - a)
         :precondition (and
             (neighbourDown ?c1 ?c2)
             (not (is-blocked ?c2))
             (at ?me ?c1)
+            (not (occ ?a ?c2))
         )
         :effect (and
             (at ?me ?c2)
@@ -49,11 +52,12 @@
     )
 
     (:action right
-        :parameters (?me - me ?c1 - c ?c2 - c)
+        :parameters (?me - me ?c1 - c ?c2 - c ?a - a)
         :precondition (and
             (neighbourRight ?c1 ?c2)
             (not (is-blocked ?c2))
             (at ?me ?c1)
+            (not (occ ?a ?c2))
         )
         :effect (and
             (at ?me ?c2)
@@ -62,11 +66,12 @@
     )
 
     (:action left
-        :parameters (?me - me ?c1 - c ?c2 - c)
+        :parameters (?me - me ?c1 - c ?c2 - c ?a - a)
         :precondition (and
             (neighbourLeft ?c1 ?c2)
             (not (is-blocked ?c2))
             (at ?me ?c1)
+            (not (occ ?a ?c2))
         )
         :effect (and
             (at ?me ?c2)
