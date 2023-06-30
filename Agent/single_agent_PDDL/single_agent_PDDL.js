@@ -11,6 +11,7 @@ const client = new DeliverooApi(
 // - add memory
 // - optimize the code (local planner)
 // - probability model to foresee agents movements
+// - fix the bug that make the agent loops and say intention stopped (if plan is created and then environment changes i think)
 
 // - plan of the professor:
 // - 1) sense the environment and create beliefs
@@ -33,6 +34,7 @@ var mapData;
 const delivery_points = [];
 
 const plans = [];
+var supportMemory = new Map();
 
 client.onMap((width, height, tiles) => {
   maxX = width;
@@ -63,8 +65,7 @@ client.onConfig((conf) => {
   } else {
     config.set("parDecInt", conf.PARCEL_DECADING_INTERVAL.split("s")[0] * 1000); //Parcel decading interval in milliseconds
   }
-  config.set("clock", conf.CLOCK*5); //Clock interval in milliseconds (not used)
-  console.log(config);
+  config.set("clock", conf.CLOCK * 5); //Clock interval in milliseconds (not used)
 });
 setTimeout(() => { }, 1000);
 
@@ -192,11 +193,16 @@ async function checkOptions() {
     //Check all the options to find the best one
     best_option = { desire: null, args: null };
     let best_score = Number.MIN_VALUE;
-    for (const option of options) {
-      let current_score = averageScore(option.args[0], option.desire, actualScore, parcelsToDeliver);
+    var bestIndex = 0;
+    for (var i = 0; i < options.length; i++) {
+      let current_score = averageScore(options[i].args[0], options[i].desire, actualScore, parcelsToDeliver);
       if (current_score > best_score) {
-        best_option = { desire: option.desire, args: option.args }
+        best_option = { desire: options[i].desire, args: options[i].args }
+        supportMemory.set(options[bestIndex].desire + "-" + options[bestIndex].args[1], {desire: options[bestIndex].desire, args: options[bestIndex].args, score: best_score, time: performance.now()});
         best_score = current_score;
+        bestIndex = i;
+      } else {
+        supportMemory.set(options[bestIndex].desire + "-" + options[bestIndex].args[1], { desire: options[i].desire, args: options[i].args, score: current_score, time: performance.now() });
       }
     }
   } else {
@@ -215,7 +221,6 @@ async function checkOptions() {
 }
 //client.onParcelsSensing(checkOptions);
 setInterval(async function () {
-  console.log("checking options");
   await checkOptions();
 }, 50);//config.get("clock"));
 //create a set "planning", if the agent is not planning, check for options
@@ -261,7 +266,7 @@ class Agent {
     if (this.current_intention.getDesire() != desire || this.current_intention.getArgs[1] != args[1]) {
       //If the queue is empty we add the intention
       if (this.intention_queue.length == 0) {
-        console.log("Adding new intention to empty queue: " + desire + " --- " + args[0].x + " - " + args[0].y);
+        console.log("Adding new intention to empty queue: " + desire);
         const current = new Intention(desire, ...args);
         this.intention_queue.push(current);
       } else if (desire == GO_PICK_UP) {
@@ -276,6 +281,7 @@ class Agent {
       } else if (desire == GO_PUT_DOWN) {
         //If the intention is to put down we check if there is already an intention to put down the same parcels and we update it
         var found = false;
+        //Maybe this is not needed (TO CHECK) needed if we want to revise intentions because it has the score
         for (const intention of this.intention_queue) {
           if (intention.getDesire() == desire) {
             console.log("Removing old: " + desire + " and adding new intention to queue: ");
@@ -308,6 +314,7 @@ myAgent.intentionLoop();
 class Intention extends Promise {
   #current_plan;
   #stopped = false;
+  #started = false;
 
   stop() {
     this.#stopped = true;
@@ -344,7 +351,6 @@ class Intention extends Promise {
     return this.#desire;
   }
 
-  #started = false;
   async achieve() {
     if (this.#started) return this;
     else this.#started = true;
@@ -432,7 +438,7 @@ class Plan {
               actionsDone[i] = await client.move(plan[i]);
               break;
           }
-        } 
+        }
       }
       return true;
     } catch (e) {
