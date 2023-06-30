@@ -10,9 +10,18 @@ const client = new DeliverooApi(
 // TODO:
 // - add memory
 // - optimize the code (local planner)
-// - see the image to follow path required by professor
 // - probability model to foresee agents movements
-// - plan memory (to avoid re-planning)
+
+// - plan of the professor:
+// - 1) sense the environment and create beliefs
+// - 2) revise beliefs
+// - 3) send beliefs to the intention rules and filter them
+// - 4) create the intentions
+// - 5) revise intentions
+// - 6) select the correct plan from the plan library
+// - 7) revise the plan
+// - 8) execute the plan
+// - 9) archive the plan (to avoid re-planning)
 
 const GO_PUT_DOWN = "go_put_down";
 const GO_PICK_UP = "go_pick_up";
@@ -40,8 +49,6 @@ client.onMap((width, height, tiles) => {
   //Once the map is complete calls the function to save the string of the map as a PDDL problem
   mapParser(mapData);
 });
-setTimeout(() => { }, 1000);
-
 //Get the configuration from the server to get values used to perform score evaluation
 const config = new Map();
 client.onConfig((conf) => {
@@ -56,8 +63,10 @@ client.onConfig((conf) => {
   } else {
     config.set("parDecInt", conf.PARCEL_DECADING_INTERVAL.split("s")[0] * 1000); //Parcel decading interval in milliseconds
   }
-  config.set("clock", conf.CLOCK); //Clock interval in milliseconds (not used)
+  config.set("clock", conf.CLOCK*5); //Clock interval in milliseconds (not used)
+  console.log(config);
 });
+setTimeout(() => { }, 1000);
 
 //Read the PDDL domain from the file
 readDomain();
@@ -208,7 +217,9 @@ async function checkOptions() {
 setInterval(async function () {
   console.log("checking options");
   await checkOptions();
-}, 500);
+}, 50);//config.get("clock"));
+//create a set "planning", if the agent is not planning, check for options
+//if the agent is planning, await for the plan to be completed
 
 class Agent {
   intention_queue = new Array();
