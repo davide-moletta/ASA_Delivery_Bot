@@ -11,6 +11,8 @@ const client = new DeliverooApi(
 // - add memory
 // - optimize the code (local planner)
 // - see the image to follow path required by professor
+// - probability model to foresee agents movements
+// - plan memory (to avoid re-planning)
 
 const GO_PUT_DOWN = "go_put_down";
 const GO_PICK_UP = "go_pick_up";
@@ -54,7 +56,7 @@ client.onConfig((conf) => {
   } else {
     config.set("parDecInt", conf.PARCEL_DECADING_INTERVAL.split("s")[0] * 1000); //Parcel decading interval in milliseconds
   }
-  config.set("clock", conf.CLOCK); //Clock interval in milliseconds
+  config.set("clock", conf.CLOCK); //Clock interval in milliseconds (not used)
 });
 
 //Read the PDDL domain from the file
