@@ -79,7 +79,7 @@ function parcelsparser(parcels, me, beliefs) {
         parcels.forEach(parcel => {
             if (parcel.carriedBy == me.id) {
                 beliefs.declare("holding me_" + me.id + " p_" + parcel.id);
-            } else {
+            } else if (!parcel.carriedBy) {
                 beliefs.declare("in p_" + parcel.id + " c_" + parcel.x + "_" + parcel.y);
             }
         });

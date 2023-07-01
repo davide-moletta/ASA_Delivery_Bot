@@ -165,7 +165,8 @@ function averageScore(args, desire, actualScore, parcelsToDeliver) {
     //If the parcel decaying time is not infinite, the score to deliver the parcels is the actual score plus the actual score divided by ten
     //minus the number of parcels to deliver multiplied by the time required to make a move times the distance from the delivery point 
     //divided by the parcel dacaying time
-    return ((actualScore + actualScore / 10) - (parcelsToDeliver * (config.get("moveDur") * distance) / config.get("parDecInt")));
+    const BONUS = actualScore / 10;
+    return ((actualScore + BONUS) - (parcelsToDeliver * (config.get("moveDur") * distance) / config.get("parDecInt")));
   }
 }
 
@@ -272,7 +273,7 @@ class Agent {
       } else if (desire == GO_PICK_UP) {
         //If the intention is to pick up we check if there is already an intention to pick up the same parcel
         for (const intention of this.intention_queue) {
-          if (intention.getArgs() == args) {
+          if (intention.getArgs() == args) { //SHOULD BE !=
             console.log("Adding new intention to queue: " + desire);
             const current = new Intention(desire, ...args);
             this.intention_queue.push(current);
