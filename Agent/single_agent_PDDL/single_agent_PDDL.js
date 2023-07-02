@@ -485,6 +485,9 @@ class Plan {
   }
 }
 
+// old_plans_dictionary with key: desire_sx_sy_gx_gy and value: plan moves
+var old_plans_dictionary = {};
+
 class GoPickUp extends Plan {
   isApplicableTo(desire) {
     return desire == GO_PICK_UP;
@@ -493,6 +496,11 @@ class GoPickUp extends Plan {
   async execute(desire, args) {
     // Create PDDL plan    
     this.setStopped(false);
+    const key = desire + "_" + me.x + "_" + me.y + "_" + args.x + "_" + args.y;
+    if (old_plans_dictionary[key]) {
+      console.log("old plan found");
+      return await this.planExecutor(old_plans_dictionary[key]);
+    }
     var goal = goalParser(desire, args, me.id);
 
     if (this.stopped) throw ['stopped'];
@@ -500,7 +508,7 @@ class GoPickUp extends Plan {
     if (plan == "no plan found") throw ['no plan found'];
 
     console.log('plan: ', plan);
-
+    old_plans_dictionary[key] = plan;
     return await this.planExecutor(plan);
   }
 }
@@ -535,6 +543,11 @@ class BlindMove extends Plan {
   async execute(desire, args) {
     // Create PDDL plan    
     this.setStopped(false);
+    const key = desire + "_" + me.x + "_" + me.y + "_" + args.x + "_" + args.y;
+    if (old_plans_dictionary[key]) {
+      console.log("old plan found");
+      return await this.planExecutor(old_plans_dictionary[key]);
+    }
     var goal = goalParser(desire, args, me.id);
 
     if (this.stopped) throw ['stopped'];
@@ -543,6 +556,7 @@ class BlindMove extends Plan {
     if (plan == "no plan found") throw ['no plan found'];
 
     console.log('plan: ', plan);
+    old_plans_dictionary[key] = plan;
     return await this.planExecutor(plan);
   }
 }
