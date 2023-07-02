@@ -267,6 +267,7 @@ class Agent {
 
   //Insert the new intention in the queue after some checks
   async queue(desire, args) {
+  
     /*
     if (this.current_intention.getDesire() != desire || (this.current_intention.getDesire() == desire && desire == GO_PICK_UP && this.current_intention.getArgs().id != args.id)) {
       if (this.intention_queue.length == 0) {
@@ -274,7 +275,7 @@ class Agent {
         const current = new Intention(desire, args);
         this.intention_queue.push(current);
       } else if (desire == GO_PICK_UP) {
-        if (!this.intention_queue.some(obj => obj.getDesire() == desire && obj.getArgs().id == desire.id)) {
+        if (!this.intention_queue.some(obj => obj.getDesire() == desire && obj.getArgs().id == args.id)) {
           console.log("Adding new pickup intention to queue");
           const current = new Intention(desire, args);
           this.intention_queue.push(current);
@@ -292,7 +293,8 @@ class Agent {
         }
       }
     }
-    */
+     */
+  
 
     //If the intention is different from the actual one or if it is the same but referring to other objects we add it to the queue
     if (this.current_intention.getDesire() != desire || this.current_intention.getArgs().id != args.id) {
@@ -331,6 +333,7 @@ class Agent {
         }
       }
     }
+    
   }
 
   async stop() {
