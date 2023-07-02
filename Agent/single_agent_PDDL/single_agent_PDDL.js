@@ -67,7 +67,7 @@ client.onConfig((conf) => {
   }
   config.set("clock", conf.CLOCK * 5); //Clock interval in milliseconds (not used)
 });
-setTimeout(() => { }, 1000);
+setTimeout(() => {}, 1000);
 
 //Read the PDDL domain from the file
 readDomain();
@@ -137,7 +137,7 @@ function weightedBlindMove(agentPosition) {
 
   //Sort the coordinates randomly and return a random one
   distances.sort(() => Math.random() - 0.5);
-  return [distances[Math.floor(Math.random() * distances.length)], 0];
+  return distances[Math.floor(Math.random() * distances.length)];
 }
 
 //Calculate an ideal score based on the beliefs of the agent to select the best option
@@ -188,7 +188,7 @@ async function checkOptions() {
     //For each parcel checks if it is carryed by the agent or not and adds the option to pick it up or put it down
     for (const parcel of parcels.values()) {
       if (!parcel.carriedBy) {
-        options.push({ desire: GO_PICK_UP, args: [parcel, parcel.id] });
+        options.push({ desire: GO_PICK_UP, args: parcel });
       } else if (parcel.carriedBy == me.id) {
         actualScore += parcel.reward;
         parcelsToDeliver++;
@@ -202,14 +202,14 @@ async function checkOptions() {
     let best_score = Number.MIN_VALUE;
     var bestIndex = 0;
     for (var i = 0; i < options.length; i++) {
-      let current_score = averageScore(options[i].args[0], options[i].desire, actualScore, parcelsToDeliver);
+      let current_score = averageScore(options[i].args, options[i].desire, actualScore, parcelsToDeliver);
       if (current_score > best_score) {
         best_option = { desire: options[i].desire, args: options[i].args }
-        supportMemory.set(options[bestIndex].desire + "-" + options[bestIndex].args[1], {desire: options[bestIndex].desire, args: options[bestIndex].args, score: best_score, time: performance.now()});
+        //supportMemory.set(options[bestIndex].desire + "-" + options[bestIndex].args[1], {desire: options[bestIndex].desire, args: options[bestIndex].args, score: best_score, time: performance.now()});
         best_score = current_score;
         bestIndex = i;
       } else {
-        supportMemory.set(options[bestIndex].desire + "-" + options[bestIndex].args[1], { desire: options[i].desire, args: options[i].args, score: current_score, time: performance.now() });
+        //supportMemory.set(options[bestIndex].desire + "-" + options[bestIndex].args[1], { desire: options[i].desire, args: options[i].args, score: current_score, time: performance.now() });
       }
     }
   } else {
@@ -224,7 +224,7 @@ async function checkOptions() {
   }
 
   //The best option is added to the intention queue
-  myAgent.queue(best_option.desire, ...best_option.args);
+  myAgent.queue(best_option.desire, best_option.args);
 }
 //client.onParcelsSensing(checkOptions);
 setInterval(async function () {
@@ -255,7 +255,7 @@ class Agent {
 
   //Reset the current intention when the agent completes it
   updateCurrentIntention() {
-    this.current_intention = new Intention(null, ...[null, null]);
+    this.current_intention = new Intention(null, null);
   }
 
   //Revise the intentions to see if the best option is better than the current intention
@@ -266,20 +266,20 @@ class Agent {
   }
 
   //Insert the new intention in the queue after some checks
-  async queue(desire, ...args) {
+  async queue(desire, args) {
     //If the intention is different from the actual one or if it is the same but referring to other objects we add it to the queue
-    if (this.current_intention.getDesire() != desire || this.current_intention.getArgs[1] != args[1]) {
+    if (this.current_intention.getDesire() != desire || this.current_intention.getArgs().id != args.id) {
       //If the queue is empty we add the intention
       if (this.intention_queue.length == 0) {
         console.log("Adding new intention to empty queue: " + desire);
-        const current = new Intention(desire, ...args);
+        const current = new Intention(desire, args);
         this.intention_queue.push(current);
       } else if (desire == GO_PICK_UP) {
         //If the intention is to pick up we check if there is already an intention to pick up the same parcel
         for (const intention of this.intention_queue) {
           if (intention.getArgs() == args) { //SHOULD BE !=
             console.log("Adding new intention to queue: " + desire);
-            const current = new Intention(desire, ...args);
+            const current = new Intention(desire, args);
             this.intention_queue.push(current);
           }
         }
@@ -291,7 +291,7 @@ class Agent {
           if (intention.getDesire() == desire) {
             console.log("Removing old: " + desire + " and adding new intention to queue: ");
             this.intention_queue.splice(this.intention_queue.indexOf(intention), 1);
-            const current = new Intention(desire, ...args);
+            const current = new Intention(desire, args);
             this.intention_queue.push(current);
             found = true;
           }
@@ -299,7 +299,7 @@ class Agent {
         if (!found) {
           //If there is no intention to put down the same parcels we add the intention
           console.log("Adding new intention to queue: " + desire);
-          const current = new Intention(desire, ...args);
+          const current = new Intention(desire, args);
           this.intention_queue.push(current);
         }
       }
@@ -336,7 +336,7 @@ class Intention extends Promise {
   #resolve;
   #reject;
 
-  constructor(desire, ...args) {
+  constructor(desire, args) {
     var resolve, reject;
     super(async (res, rej) => {
       resolve = res;
@@ -368,7 +368,7 @@ class Intention extends Promise {
         this.#current_plan = plan;
         console.log("achieving desire: " + this.getDesire());
         try {
-          const plan_res = await plan.execute(this.#desire, ...this.#args);
+          const plan_res = await plan.execute(this.#desire, this.#args);
           this.#resolve(plan_res);
 
           console.log("plan: " + this.getDesire() + " -- succesfully achieved");
@@ -463,10 +463,10 @@ class GoPickUp extends Plan {
     return desire == GO_PICK_UP;
   }
 
-  async execute(desire, ...args) {
+  async execute(desire, args) {
     // Create PDDL plan    
     this.setStopped(false);
-    var goal = goalParser(desire, args[0], me.id);
+    var goal = goalParser(desire, args, me.id);
 
     if (this.stopped) throw ['stopped'];
     var plan = await planner(parcels, agents, me, goal);
@@ -483,7 +483,7 @@ class GoPutDown extends Plan {
     return desire == GO_PUT_DOWN;
   }
 
-  async execute(desire, ...args) {
+  async execute(desire, args) {
     // Create PDDL plan    
     this.setStopped(false);
     var goal = goalParser(desire, args, me.id);
@@ -505,10 +505,10 @@ class BlindMove extends Plan {
     return desire == BLIND_MOVE;
   }
 
-  async execute(desire, ...args) {
+  async execute(desire, args) {
     // Create PDDL plan    
     this.setStopped(false);
-    var goal = goalParser(desire, args[0], me.id);
+    var goal = goalParser(desire, args, me.id);
 
     if (this.stopped) throw ['stopped'];
     var plan = await planner(parcels, agents, me, goal);
