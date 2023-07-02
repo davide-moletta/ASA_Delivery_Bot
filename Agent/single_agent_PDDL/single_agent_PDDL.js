@@ -100,6 +100,8 @@ function weightedBlindMove(agentPosition) {
   //Create an offset to avoid cells in the FOV of the agent
   const offset = Math.ceil(config.get("parObsDist") / 2);
 
+  var weigth;
+
   //Calculate the distances from the agent to each coordinate
   const distances = [];
   for (let i = offset; i < maxX - offset; i++) {
@@ -112,13 +114,16 @@ function weightedBlindMove(agentPosition) {
       if (distance < offset) continue;
 
       //Push the coordinates in the array with a number of repetitions based on the distance/5
-      for (let k = 0; k < distance / 5; k++) {
+
+      weigth = distance / 5;
+      for (let k = 0; k < weigth; k++) {
         distances.push({ x: j, y: i });
       }
     }
   }
 
   //If there are no points in the distances array return a random walkable point (this should never happen)
+  //CAN LOOP FIX
   if (distances.length == 0) {
     var targetX = 0;
     var targetY = 0;
@@ -155,7 +160,8 @@ function averageScore(args, desire, actualScore, parcelsToDeliver) {
 
     //If the parcel decaying time is infinite and the distance is less than 4 prioritize delivering the parcel otherwise prioritize picking up parcels
     if (config.get("parDecInt") == 'infinite') {
-      if (distance <= 4) {
+      const WEIGTH = 4;
+      if (distance <= WEIGTH) {
         return Number.MAX_VALUE;
       } else {
         return 500;
@@ -224,8 +230,6 @@ async function checkOptions() {
 setInterval(async function () {
   await checkOptions();
 }, 50);//config.get("clock"));
-//create a set "planning", if the agent is not planning, check for options
-//if the agent is planning, await for the plan to be completed
 
 class Agent {
   intention_queue = new Array();
