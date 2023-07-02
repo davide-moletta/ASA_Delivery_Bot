@@ -67,7 +67,7 @@ client.onConfig((conf) => {
   }
   config.set("clock", conf.CLOCK * 5); //Clock interval in milliseconds (not used)
 });
-setTimeout(() => {}, 1000);
+setTimeout(() => { }, 1000);
 
 //Read the PDDL domain from the file
 readDomain();
@@ -254,7 +254,7 @@ class Agent {
   }
 
   //Reset the current intention when the agent completes it
-  updateCurrentIntention() {
+  resetCurrentIntention() {
     this.current_intention = new Intention(null, null);
   }
 
@@ -267,6 +267,33 @@ class Agent {
 
   //Insert the new intention in the queue after some checks
   async queue(desire, args) {
+    /*
+    if (this.current_intention.getDesire() != desire || (this.current_intention.getDesire() == desire && desire == GO_PICK_UP && this.current_intention.getArgs().id != args.id)) {
+      if (this.intention_queue.length == 0) {
+        console.log("Adding new intention to empty queue: " + desire);
+        const current = new Intention(desire, args);
+        this.intention_queue.push(current);
+      } else if (desire == GO_PICK_UP) {
+        if (!this.intention_queue.some(obj => obj.getDesire() == desire && obj.getArgs().id == desire.id)) {
+          console.log("Adding new pickup intention to queue");
+          const current = new Intention(desire, args);
+          this.intention_queue.push(current);
+        }
+      } else if (desire == GO_PUT_DOWN) {
+        if (this.intention_queue.some(obj => obj.getDesire() == desire)) {
+          console.log("Updating old putdow intention");
+          this.intention_queue.splice(this.intention_queue.indexOf(this.intention_queue.findIndex(obj => obj.getDesire() == desire)), 1);
+          const current = new Intention(desire, args);
+          this.intention_queue.push(current);
+        } else {
+          console.log("Adding new putdown intention to queue");
+          const current = new Intention(desire, args);
+          this.intention_queue.push(current);
+        }
+      }
+    }
+    */
+
     //If the intention is different from the actual one or if it is the same but referring to other objects we add it to the queue
     if (this.current_intention.getDesire() != desire || this.current_intention.getArgs().id != args.id) {
       //If the queue is empty we add the intention
@@ -372,7 +399,7 @@ class Intention extends Promise {
           this.#resolve(plan_res);
 
           console.log("plan: " + this.getDesire() + " -- succesfully achieved");
-          myAgent.updateCurrentIntention();
+          myAgent.resetCurrentIntention();
 
           return plan_res;
         } catch (e) {
@@ -520,7 +547,7 @@ class BlindMove extends Plan {
   }
 }
 
-myAgent.updateCurrentIntention();
+myAgent.resetCurrentIntention();
 plans.push(new GoPickUp());
 plans.push(new BlindMove());
 plans.push(new GoPutDown());
