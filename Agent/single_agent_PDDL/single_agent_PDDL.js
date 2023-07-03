@@ -79,10 +79,33 @@ client.onYou(({ id, x, y }) => {
   me.y = y;
 });
 
+// DUPLICATE THE FILE
+//
+// ----------- BASIC -----------
+//TODO: call other agent to share the ID: if the other agent is not present, wait for it to be present
+// if my ID < other ID, i'm the number 0, otherwise i'm the number 1
+// call slice function to get the my slice of the map
+// edit blind move to go only in my slice
+// 
+// ASK FUNCTION for the ID (also SHOUT if #agents > 2)
+// SAY FUNCTION for the parcel location
+// ----------- MEDIUM -----------
+//TODO: duplicate the file. Enable the communication with the other agent
+// when going for a parcel, ask if the expected return if they are going to pick it up:
+// if theirs is higher, drop the plan and go for another parcel
+// a: "My er is 200, what is yours?"
+// b: "Mine is 300" -> drop the plan
+// b: "Mine is 100" -> execute the plan
+//
+// SHOUT FUNCTION to ask for the expected return
+// REPLY FUNCTION to say "Okay I go, remove it from your list"
+
+
 const parcels = new Map();
 client.onParcelsSensing(async (perceived_parcels) => {
   for (const p of perceived_parcels) {
     parcels.set(p.id, p);
+    //TODO: if parcel is in my slice, add it, otherwise send message to the other agent about it
   }
 });
 
@@ -201,15 +224,35 @@ async function checkOptions() {
     best_option = { desire: null, args: null };
     let best_score = Number.MIN_VALUE;
     var bestIndex = 0;
+    var metrics
+    var decay_time = config.get("parDecInt") == 'infinite' ? 1 : config.get("parDecInt");
+
     for (var i = 0; i < options.length; i++) {
       let current_score = averageScore(options[i].args, options[i].desire, actualScore, parcelsToDeliver);
+      
+
       if (current_score > best_score) {
         best_option = { desire: options[i].desire, args: options[i].args }
-        //supportMemory.set(options[bestIndex].desire + "-" + options[bestIndex].args[1], {desire: options[bestIndex].desire, args: options[bestIndex].args, score: best_score, time: performance.now()});
+        // compute the metrics by takeing the current time in millis + the parcel value multiplied by the decading time + the move time * distance, to later check if current time < metrics
+        if(options[bestIndex].desire == GO_PICK_UP){
+          metrics = performance.now() + (options[bestIndex].args.reward * decay_time);
+          supportMemory.set(options[bestIndex].desire + "-" + options[bestIndex].args.id, {desire: options[bestIndex].desire, args: options[bestIndex].args, time: metrics});
+        }
+        else if(options[bestIndex].desire == GO_PUT_DOWN){
+          metrics = performance.now() + parcelsToDeliver * decay_time * actualScore
+          supportMemory.set(options[bestIndex].desire, {desire: options[bestIndex].desire, args: options[bestIndex].args, time: metrics});
+        }
         best_score = current_score;
         bestIndex = i;
       } else {
-        //supportMemory.set(options[bestIndex].desire + "-" + options[bestIndex].args[1], { desire: options[i].desire, args: options[i].args, score: current_score, time: performance.now() });
+        if(options[i].desire == GO_PICK_UP){
+          metrics = performance.now() + (options[i].args.reward * decay_time);
+          supportMemory.set(options[i].desire + "-" + options[i].args.id, {desire: options[i].desire, args: options[i].args, time: metrics});
+        }
+        else if(options[i].desire == GO_PUT_DOWN){
+          metrics = performance.now() + parcelsToDeliver * decay_time * actualScore
+          supportMemory.set(options[i].desire, {desire: options[i].desire, args: options[i].args, time: metrics});
+        }
       }
     }
   } else {
