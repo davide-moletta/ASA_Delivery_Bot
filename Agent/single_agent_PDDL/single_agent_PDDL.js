@@ -140,7 +140,7 @@ function weightedBlindMove(agentPosition) {
 
       weigth = distance / 5;
       for (let k = 0; k < weigth; k++) {
-        distances.push({ x: j, y: i });
+        distances.push({ x: j, y: i, score: Number.NEGATIVE_INFINITY  });
       }
     }
   }
@@ -155,7 +155,7 @@ function weightedBlindMove(agentPosition) {
       targetY = Math.floor(Math.random() * maxY);
     } while (mapData[targetX][targetY] == 0);
 
-    return [{ x: targetX, y: targetY }, 0]
+    return { x: targetX, y: targetY, score: Number.NEGATIVE_INFINITY };
   }
 
   //Sort the coordinates randomly and return a random one
@@ -211,14 +211,14 @@ async function checkOptions() {
     //For each parcel checks if it is carryed by the agent or not and adds the option to pick it up or put it down
     for (const parcel of parcels.values()) {
       if (!parcel.carriedBy) {
-        options.push({ desire: GO_PICK_UP, args: parcel });
+        options.push({ desire: GO_PICK_UP, args: {id: parcel.id, x: parcel.x, y: parcel.y, reward: parcel.reward, score: 0}});
       } else if (parcel.carriedBy == me.id) {
         actualScore += parcel.reward;
         parcelsToDeliver++;
         deliveries.push(parcel);
       }
     }
-    if (parcelsToDeliver != 0) options.push({ desire: GO_PUT_DOWN, args: deliveries });
+    if (parcelsToDeliver != 0) options.push({ desire: GO_PUT_DOWN, args: {deliveries: deliveries, score: 0} });
 
     //Check all the options to find the best one
     best_option = { desire: null, args: null };
@@ -229,7 +229,7 @@ async function checkOptions() {
 
     for (var i = 0; i < options.length; i++) {
       let current_score = averageScore(options[i].args, options[i].desire, actualScore, parcelsToDeliver);
-      
+      options[i].args.score = current_score;
 
       if (current_score > best_score) {
         best_option = { desire: options[i].desire, args: options[i].args }
@@ -254,16 +254,11 @@ async function checkOptions() {
           supportMemory.set(options[i].desire, {desire: options[i].desire, args: options[i].args, time: metrics});
         }
       }
+      
     }
+    myAgent.intentionReplace(best_option.desire, best_option.args);
   } else {
     best_option = { desire: BLIND_MOVE, args: weightedBlindMove({ x: me.x, y: me.y }) };
-  }
-
-  //If no best option is found, the agent performs a blind move otherwise the agents calls the intention revision to see if the best option is better than the current intention
-  if (best_option.desire == null) {
-    best_option = { desire: BLIND_MOVE, args: weightedBlindMove({ x: me.x, y: me.y }) };
-  } else {
-    myAgent.intentionRevision(best_option.desire)
   }
 
   //The best option is added to the intention queue
@@ -302,10 +297,15 @@ class Agent {
   }
 
   //Revise the intentions to see if the best option is better than the current intention
-  async intentionRevision(desire) {
+  async intentionReplace(desire, args) {
     if (this.current_intention.getDesire() == BLIND_MOVE && (desire == GO_PICK_UP || desire == GO_PUT_DOWN)) {
       await this.stop();
     }
+    else if (this.current_intention.getArgs().score < args.score) {
+      await this.stop();
+    }
+
+
   }
 
   //Insert the new intention in the queue after some checks
