@@ -140,7 +140,7 @@ function weightedBlindMove(agentPosition) {
 
       weigth = distance / 5;
       for (let k = 0; k < weigth; k++) {
-        distances.push({ x: j, y: i, score: Number.NEGATIVE_INFINITY  });
+        distances.push({ x: j, y: i, score: Number.MIN_VALUE });
       }
     }
   }
@@ -155,7 +155,7 @@ function weightedBlindMove(agentPosition) {
       targetY = Math.floor(Math.random() * maxY);
     } while (mapData[targetX][targetY] == 0);
 
-    return { x: targetX, y: targetY, score: Number.NEGATIVE_INFINITY };
+    return { x: targetX, y: targetY, score: Number.MIN_VALUE };
   }
 
   //Sort the coordinates randomly and return a random one
@@ -183,8 +183,11 @@ function averageScore(args, desire, actualScore, parcelsToDeliver) {
 
     //If the parcel decaying time is infinite and the distance is less than 4 prioritize delivering the parcel otherwise prioritize picking up parcels
     if (config.get("parDecInt") == 'infinite') {
-      const WEIGTH = 4;
-      if (distance <= WEIGTH) {
+      // if move duration is below 50, MAX_PARCEL_ON_HEAD is 30, if between 50 and 200 it is 20, if above 200 it is 10
+      const MAX_PARCEL_ON_HEAD = config.get("moveDur") <= 50 ? 30 : config.get("moveDur") <= 200 ? 20 : 10;
+      // if move duration is below 50, MIN_DISTANCE is 2, if between 50 and 200 it is 4, if above 200 it is 5
+      const MIN_DISTANCE = config.get("moveDur") <= 50 ? 2 : config.get("moveDur") <= 200 ? 4 : 5;
+      if (parcelsToDeliver >= MAX_PARCEL_ON_HEAD || distance < MIN_DISTANCE) {
         return Number.MAX_VALUE;
       } else {
         return 500;
@@ -211,14 +214,14 @@ async function checkOptions() {
     //For each parcel checks if it is carryed by the agent or not and adds the option to pick it up or put it down
     for (const parcel of parcels.values()) {
       if (!parcel.carriedBy) {
-        options.push({ desire: GO_PICK_UP, args: {id: parcel.id, x: parcel.x, y: parcel.y, reward: parcel.reward, score: 0}});
+        options.push({ desire: GO_PICK_UP, args: { id: parcel.id, x: parcel.x, y: parcel.y, reward: parcel.reward, score: 0 } });
       } else if (parcel.carriedBy == me.id) {
         actualScore += parcel.reward;
         parcelsToDeliver++;
         deliveries.push(parcel);
       }
     }
-    if (parcelsToDeliver != 0) options.push({ desire: GO_PUT_DOWN, args: {deliveries: deliveries, score: 0} });
+    if (parcelsToDeliver != 0) options.push({ desire: GO_PUT_DOWN, args: { deliveries: deliveries, score: 0 } });
 
     //Check all the options to find the best one
     best_option = { desire: null, args: null };
@@ -234,31 +237,37 @@ async function checkOptions() {
       if (current_score > best_score) {
         best_option = { desire: options[i].desire, args: options[i].args }
         // compute the metrics by takeing the current time in millis + the parcel value multiplied by the decading time + the move time * distance, to later check if current time < metrics
-        if(options[bestIndex].desire == GO_PICK_UP){
+        if (options[bestIndex].desire == GO_PICK_UP) {
           metrics = performance.now() + (options[bestIndex].args.reward * decay_time);
-          supportMemory.set(options[bestIndex].desire + "-" + options[bestIndex].args.id, {desire: options[bestIndex].desire, args: options[bestIndex].args, time: metrics});
+          supportMemory.set(options[bestIndex].desire + "-" + options[bestIndex].args.id, { desire: options[bestIndex].desire, args: options[bestIndex].args, time: metrics });
         }
-        else if(options[bestIndex].desire == GO_PUT_DOWN){
+        else if (options[bestIndex].desire == GO_PUT_DOWN) {
           metrics = performance.now() + parcelsToDeliver * decay_time * actualScore
-          supportMemory.set(options[bestIndex].desire, {desire: options[bestIndex].desire, args: options[bestIndex].args, time: metrics});
+          supportMemory.set(options[bestIndex].desire, { desire: options[bestIndex].desire, args: options[bestIndex].args, time: metrics });
         }
         best_score = current_score;
         bestIndex = i;
       } else {
-        if(options[i].desire == GO_PICK_UP){
+        if (options[i].desire == GO_PICK_UP) {
           metrics = performance.now() + (options[i].args.reward * decay_time);
-          supportMemory.set(options[i].desire + "-" + options[i].args.id, {desire: options[i].desire, args: options[i].args, time: metrics});
+          supportMemory.set(options[i].desire + "-" + options[i].args.id, { desire: options[i].desire, args: options[i].args, time: metrics });
         }
-        else if(options[i].desire == GO_PUT_DOWN){
+        else if (options[i].desire == GO_PUT_DOWN) {
           metrics = performance.now() + parcelsToDeliver * decay_time * actualScore
-          supportMemory.set(options[i].desire, {desire: options[i].desire, args: options[i].args, time: metrics});
+          supportMemory.set(options[i].desire, { desire: options[i].desire, args: options[i].args, time: metrics });
         }
       }
-      
     }
-    myAgent.intentionReplace(best_option.desire, best_option.args);
   } else {
     best_option = { desire: BLIND_MOVE, args: weightedBlindMove({ x: me.x, y: me.y }) };
+  }
+
+  if (best_option.desire == null) {
+    best_option = { desire: BLIND_MOVE, args: weightedBlindMove({ x: me.x, y: me.y }) };
+  } else {
+    if (myAgent.getCurrentIntention().getDesire() != null) {
+      myAgent.intentionReplace(best_option.desire, best_option.args)
+    }
   }
 
   //The best option is added to the intention queue
@@ -277,7 +286,14 @@ class Agent {
   async intentionLoop() {
     while (true) {
       //Peek the first intention and removes it from the queue only after it is achieved or rejected to enable stop option
-      const intention = this.intention_queue[0];
+      //const intention = this.intention_queue[0];
+      var intention
+      if (this.intention_queue.length == 0) {
+        intention = this.intention_queue[0];
+      } else {
+        intention = await this.intentionRevision();
+      }
+
       if (intention) {
         this.current_intention = intention;
         try {
@@ -296,21 +312,80 @@ class Agent {
     this.current_intention = new Intention(null, null);
   }
 
+  getCurrentIntention() {
+    return this.current_intention;
+  }
+
+  async intentionRevision() {
+    var bestOptions = [];
+
+    for (const intention of this.intention_queue) {
+      // const key = this.#desire + "_" + me.x + "_" + me.y + "_" + args.x + "_" + args.y;
+      if (intention.getDesire() != GO_PUT_DOWN) {
+        const failed_key = intention.getDesire() + "_" + me.x + "_" + me.x + "_" + intention.getArgs().x + "_" + intention.getArgs().y;
+        if (old_failed_plans[failed_key]) this.intention_queue.splice(this.intention_queue.indexOf(intention), 1);
+      }
+      if (intention.getArgs().time > performance.now()) {
+        this.intention_queue.splice(this.intention_queue.indexOf(intention), 1);
+      } else {
+        //insert in possible best option
+        bestOptions.push(intention);
+      }
+    }
+
+    for (const [key, value] of supportMemory) {
+      if (value.time < performance.now()) {
+        bestOptions.push(value);
+      } else {
+        supportMemory.delete(key);
+      }
+    }
+
+    var actualScore = 0;
+    var parcelsToDeliver = 0;
+
+    if (bestOptions.length < 3) {
+      for (const parcel of parcels.values()) {
+        if (parcel.carriedBy == me.id) {
+          actualScore += parcel.reward;
+          parcelsToDeliver++;
+        }
+      }
+
+      var best_option = { desire: null, args: null };
+      let best_score = Number.MIN_VALUE;
+
+      for (const option of bestOptions) {
+        let current_score = averageScore(option.args, option.desire, actualScore, parcelsToDeliver);
+        option.args.score = current_score;
+
+        if (current_score > best_score) {
+          best_option = { desire: option.desire, args: option.args }
+          best_score = current_score;
+        }
+
+      }
+    } else {
+      best_option = { desire: BLIND_MOVE, args: weightedBlindMove({ x: me.x, y: me.y }) };
+    }
+
+    return best_option;
+  }
+
   //Revise the intentions to see if the best option is better than the current intention
   async intentionReplace(desire, args) {
     if (this.current_intention.getDesire() == BLIND_MOVE && (desire == GO_PICK_UP || desire == GO_PUT_DOWN)) {
       await this.stop();
-    }
-    else if (this.current_intention.getArgs().score < args.score) {
+    } else if (this.current_intention.getDesire() == GO_PICK_UP && this.current_intention.getArgs().score < args.score && this.current_intention.getArgs().id != args.id) {
+      await this.stop();
+    } else if (this.current_intention.getDesire() == GO_PUT_DOWN && this.current_intention.getArgs().score < args.score) {
       await this.stop();
     }
-
-
   }
 
   //Insert the new intention in the queue after some checks
   async queue(desire, args) {
-  
+
     /*
     if (this.current_intention.getDesire() != desire || (this.current_intention.getDesire() == desire && desire == GO_PICK_UP && this.current_intention.getArgs().id != args.id)) {
       if (this.intention_queue.length == 0) {
@@ -337,7 +412,7 @@ class Agent {
       }
     }
      */
-  
+
 
     //If the intention is different from the actual one or if it is the same but referring to other objects we add it to the queue
     if (this.current_intention.getDesire() != desire || this.current_intention.getArgs().id != args.id) {
@@ -376,7 +451,7 @@ class Agent {
         }
       }
     }
-    
+
   }
 
   async stop() {
@@ -388,6 +463,7 @@ class Agent {
 }
 const myAgent = new Agent();
 myAgent.intentionLoop();
+const old_failed_plans = {}
 
 class Intention extends Promise {
   #current_plan;
@@ -450,6 +526,10 @@ class Intention extends Promise {
           return plan_res;
         } catch (e) {
           console.log("plan: " + this.getDesire() + " -- failed while trying to achieve");
+          if (this.#desire != GO_PUT_DOWN) {
+            const key = this.#desire + "_" + me.x + "_" + me.y + "_" + args.x + "_" + args.y;
+            if (!old_failed_plans[key]) old_failed_plans[key] = this.#current_plan
+          }
           this.#current_plan.stop();
           this.#stopped = true;
         }
@@ -567,7 +647,7 @@ class GoPutDown extends Plan {
   async execute(desire, args) {
     // Create PDDL plan    
     this.setStopped(false);
-    var goal = goalParser(desire, args, me.id);
+    var goal = goalParser(desire, args.deliveries, me.id);
 
     if (this.stopped) throw ['stopped'];
     var plan = await planner(parcels, agents, me, goal);
