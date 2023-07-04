@@ -104,7 +104,10 @@ function goalParser(desire, args, me) {
     if (desire == GO_PICK_UP) {
         goal += " (holding me_" + me + " p_" + args.id + ")"
     } else if (desire == GO_PUT_DOWN) {
-        goal += " (delivered p_" + args[0].id + ")"
+        goal = "or"
+        for (const a of args) {
+            goal += " (delivered p_" + a.id + ")"
+        }
     } else {
         goal += " (at me_" + me + " c_" + args.x + "_" + args.y + ")"
     }
@@ -161,7 +164,7 @@ async function planner(parcels, agents, me, goal) {
 
     //parse the PDDL problem as a pddlString
     let problem = pddlProblem.toPddlString();
-
+    
     //Call the onlineSolver function and return the plan if it exists
     var plan = await onlineSolver(domain, problem);
 

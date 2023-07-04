@@ -1,6 +1,6 @@
 (define (domain default)
 
-    (:requirements :strips :typing :negative-preconditions)
+    (:requirements :strips :typing :negative-preconditions :disjunctive-preconditions)
 
     (:types
         a p c me

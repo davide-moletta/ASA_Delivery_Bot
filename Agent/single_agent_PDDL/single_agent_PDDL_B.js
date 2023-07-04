@@ -3,8 +3,8 @@ import { planner, goalParser, mapParser, readDomain } from "./test_PDDL_moletta.
 import { findDeliveryPoint } from ".././utils/astar_utils.js";
 
 const client = new DeliverooApi(
-  "http://localhost:8080/?name=Cannarsi",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjA5ZDBiMDA0NDdlIiwibmFtZSI6IkNhbm5hcnNpIiwiaWF0IjoxNjgyMDk4NTI0fQ.juYE2bZS6jm8ghTqrpfheFSVSjpIz_C1s-bPIj4LN1w"
+  "http://localhost:8080/?name=Zeb89",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjljYzkwMmU3ZDQ3IiwibmFtZSI6IlplYjg5IiwiaWF0IjoxNjg4NDgzNDg1fQ.7Ma9uLSiA1_6AG4M37O8QPPVKU2UwCADUboa5cnnUeU"
 );
 
 // TODO:
@@ -103,13 +103,11 @@ client.onYou(({ id, x, y }) => {
 
 var parcels = new Map();
 client.onParcelsSensing(async (perceived_parcels) => {
-  parcels = new Map();
   for (const p of perceived_parcels) {
-    if(!p.carriedBy || p.carriedBy == me.id){
-      p.x = Math.round(p.x);
-      p.y = Math.round(p.y);
-      parcels.set(p.id, p);
-    }
+    parcels = new Map();
+    p.x = Math.round(p.x);
+    p.y = Math.round(p.y);
+    parcels.set(p.id, p);
     //TODO: if parcel is in my slice, add it, otherwise send message to the other agent about it
   }
 });
@@ -202,7 +200,7 @@ function averageScore(args, desire, actualScore, parcelsToDeliver) {
     //If the parcel decaying time is not infinite, the score to deliver the parcels is the actual score plus the actual score divided by ten
     //minus the number of parcels to deliver multiplied by the time required to make a move times the distance from the delivery point 
     //divided by the parcel dacaying time
-    const BONUS = actualScore / 5;
+    const BONUS = actualScore / 10;
     return ((actualScore + BONUS) - (parcelsToDeliver * (config.get("moveDur") * distance) / config.get("parDecInt")));
   }
 }
