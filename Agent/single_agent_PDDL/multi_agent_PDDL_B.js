@@ -158,11 +158,11 @@ function messageParser(msg){
   //Push into normal parcels and agents but every time they are refreshed so better separate memory?
 }
 
-//Messages of type: "parcels$p0.x.y.carryed.reward_p1.x.y.carryed.reward_p2.x.y.carryed.reward - agents$a0.x.y_a1.x.y" to share the parcels position
+//Messages of type: "parcels$p0.x.y.carryed.reward_p1.x.y.carryed.reward_p2.x.y.carryed.reward-agents$a0.x.y_a1.x.y" to share the parcels position
 const agentCID  = "agent1";
 client.onMsg(async (message) => {
   if (message.id == agentCID) {
-    mapParser(message.msg);
+    messageParser(message.msg);
   }
 });
 

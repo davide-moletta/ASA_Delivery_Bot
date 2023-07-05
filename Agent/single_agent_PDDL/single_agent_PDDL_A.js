@@ -78,28 +78,6 @@ setTimeout(() => { }, 1000);
 //Read the PDDL domain from the file
 readDomain();
 
-// DUPLICATE THE FILE
-//
-// ----------- BASIC -----------
-//TODO: call other agent to share the ID: if the other agent is not present, wait for it to be present
-// if my ID < other ID, i'm the number 0, otherwise i'm the number 1
-// call slice function to get the my slice of the map
-// edit blind move to go only in my slice
-// 
-// ASK FUNCTION for the ID (also SHOUT if #agents > 2)
-// SAY FUNCTION for the parcel location
-// ----------- MEDIUM -----------
-//TODO: duplicate the file. Enable the communication with the other agent
-// when going for a parcel, ask if the expected return if they are going to pick it up:
-// if theirs is higher, drop the plan and go for another parcel
-// a: "My er is 200, what is yours?"
-// b: "Mine is 300" -> drop the plan
-// b: "Mine is 100" -> execute the plan
-//
-// SHOUT FUNCTION to ask for the expected return
-// REPLY FUNCTION to say "Okay I go, remove it from your list"
-
-
 //----------BELIEF REVISION----------
 
 //Me listener to get the agent id and position
@@ -120,7 +98,6 @@ client.onParcelsSensing(async (perceived_parcels) => {
       p.y = Math.round(p.y);
       parcels.set(p.id, p);
     }
-    //TODO: if parcel is in my slice, add it, otherwise send message to the other agent about it
   }
 });
 
