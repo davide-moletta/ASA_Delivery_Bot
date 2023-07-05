@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { onlineSolver, PddlProblem, Beliefset } from "@unitn-asa/pddl-client";
 
+//Possible desires of the agent
 const GO_PUT_DOWN = "go_put_down";
 const GO_PICK_UP = "go_pick_up";
 
@@ -8,6 +9,7 @@ const GO_PICK_UP = "go_pick_up";
 const beliefMap = new Beliefset();
 var domain, mapObjects = "", beliefMapString = "";
 
+//Read the domain file and store it in the domain variable
 async function readDomain() {
     domain = await new Promise((res, rej) => {
         fs.readFile('./domain.pddl', 'utf8', (err, data) => {
@@ -17,6 +19,7 @@ async function readDomain() {
     })
 }
 
+//Read the objects of the map and store them in the mapObjects variable and adds the typing - c which are the cells
 function mapObjectParser() {
     for (const o of beliefMap.objects) {
         mapObjects += o + " ";
@@ -33,7 +36,7 @@ function checkOffset(x, y, map) {
         { id: "Down", dx: 0, dy: -1 },   // Down
     ];
 
-    //check for every neighbour of the cell if it is in the map, if it is and it's not blocked add the neighbourID in that direction
+    //check for every neighbour of the cell if it is in the map, if it is and it's not blocked add the neighbourID in that direction to the map beliefs
     for (const offset of offsets) {
         const offsetX = x + offset.dx;
         const offsetY = y + offset.dy;
@@ -45,10 +48,10 @@ function checkOffset(x, y, map) {
     }
 }
 
-//Parse the matrix and writes it as a PDDL problem in the beliefMap constant
+//Parse the matrix and add the beliefs to the map bleiefs
 function mapParser(map) {
     //cycle all the matrix and for every cell check
-    //if it is blocked add the block and skip, if it is a delivery point add the delivery atttribute, if it is a normal cell or a delivery point check the neighbours
+    //if it is blocked delare the blocked cell and continue, if it is a delivery point declare the delivery cell, if it is a normal cell or a delivery point check the neighbours
     for (let i = 0; i < map.length; i++) {
         for (let j = 0; j < map.length; j++) {
             switch (map[i][j]) {
@@ -73,13 +76,17 @@ function mapParser(map) {
 
 //Parse the parcels sent by the client and add them to the beliefSet
 function parcelsparser(parcels, me, beliefs) {
+    //If there are no parcels in the map declare the default parcel in the default cell
     if (parcels.size == 0) {
         beliefs.declare("in p_default c_default_default");
     } else {
+        //For each parcel check if it is carried by the agent or not and declare it in the beliefs
         parcels.forEach(parcel => {
             if (parcel.carriedBy == me.id) {
+                //If the parcel is carried by the agent declare that the agent is holding it
                 beliefs.declare("holding me_" + me.id + " p_" + parcel.id);
             } else if (!parcel.carriedBy) {
+                //If the parcel is not carried by anyone declare it in the correct cell
                 beliefs.declare("in p_" + parcel.id + " c_" + parcel.x + "_" + parcel.y);
             }
         });
@@ -88,9 +95,11 @@ function parcelsparser(parcels, me, beliefs) {
 
 //Parse the "enemy" agents sent by the client and add them to the beliefSet
 function agentsParser(agents, beliefs) {
+    //If there are no agents in the map declare the default agent in the default cell
     if (agents.size == 0) {
         beliefs.declare("occ a_default c_default_default");
     } else {
+        //For each agent declare it in the correct cell
         agents.forEach(agent => {
             beliefs.declare("occ a_" + agent.id + " c_" + agent.x + "_" + agent.y);
         });
@@ -102,35 +111,46 @@ function goalParser(desire, args, me) {
     var goal = "and"
 
     if (desire == GO_PICK_UP) {
+        //If the desire is to go pickup add to the goal that the agent needs to be holding the parcel
         goal += " (holding me_" + me + " p_" + args.id + ")"
     } else if (desire == GO_PUT_DOWN) {
+        //If the desire is to go put down add to the goal that the one of the parcel needs to be delivered
+        // this is because if we deliver one cell we deliver all of them
         goal = "or"
         for (const a of args) {
             goal += " (delivered p_" + a.id + ")"
         }
     } else {
+        //If the desire is neither pikup nor putdown add to the goal that the agent needs to be in the specified cell (in case of blindmove only)
         goal += " (at me_" + me + " c_" + args.x + "_" + args.y + ")"
     }
     return goal;
 }
 
-//Parse the objects in the beliefSet and write them in the PDDL problem necessary otherwise types breake the normal parser
+//Parse the objects in the beliefSet used to add typing to the objects
 function objectsParser(beliefs) {
     var objects = "";
+    //Get the first object type
     var previous = [...beliefs.objects][0].split("_")[0];
 
+    //For every object check the type
     for (const o of beliefs.objects) {
+        //Get the object type
         var type = o.split("_")[0];
+        //If the is different from cell
         if (type != "c") {
+            //If the type is different from the previous one add the previous type and start a new line, after that add the current object
             if (type != previous) {
                 objects += "- " + previous + "\n";
                 objects += "    " + o + " ";
                 previous = type;
             } else {
+                //If the type is the same as the previous one add the object to the current line
                 objects += o + " ";
             }
         }
     }
+    //Add the last type
     objects += "- " + previous + " ";
     return objects;
 }
@@ -138,13 +158,14 @@ function objectsParser(beliefs) {
 //Parse the found plan to make it deliveroo-readable
 function planParser(plan) {
     var actions = [];
+    //For every action in the plan add it to the actions array and return it (used to return a deliveroo-readable plan)
     for (const p of plan) {
         actions.push(p.action);
     }
     return actions;
 }
 
-//Planner function, it takes the parcels, agents and me from the client and returns the plan
+//Planner function, it takes the parcels, agents, me and goal from the client and returns the plan
 async function planner(parcels, agents, me, goal) {
 
     //Set the beliefSet equals to the beliefMap and parse the dynamic objects
@@ -164,7 +185,7 @@ async function planner(parcels, agents, me, goal) {
 
     //parse the PDDL problem as a pddlString
     let problem = pddlProblem.toPddlString();
-    
+
     //Call the onlineSolver function and return the plan if it exists
     var plan = await onlineSolver(domain, problem);
 
