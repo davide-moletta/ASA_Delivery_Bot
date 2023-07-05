@@ -1,14 +1,15 @@
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 import { planner, goalParser, mapParser, readDomain } from "./PDDL_planner.js";
 import { findDeliveryPoint } from "../utils/astar_utils.js";
+import { divideMatrix } from "../utils/map_utils.js";
+
 
 const client = new DeliverooApi(
-  "http://localhost:8080/?name=Cannarsi",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjA5ZDBiMDA0NDdlIiwibmFtZSI6IkNhbm5hcnNpIiwiaWF0IjoxNjgyMDk4NTI0fQ.juYE2bZS6jm8ghTqrpfheFSVSjpIz_C1s-bPIj4LN1w"
+  "http://localhost:8080/?name=B",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNlYzhmY2FjODBkIiwibmFtZSI6IkIiLCJpYXQiOjE2ODg1NjM4MDR9.531WUUKu4DF5zz9KYBlUoHoW7rQqqhQjnz8mUonfpUQ"
 );
 
 //TODO
-// - messages
 // - update weights for not infinite environments
 
 //EXTRA
@@ -17,7 +18,6 @@ const client = new DeliverooApi(
 // - modify the queue function
 
 //FIX 
-// - possible loop in weighted blind move
 // - use the clock to check options
 
 //Possible desires of our agent
@@ -38,6 +38,11 @@ const old_failed_plans = {}
 //Old_plans_dictionary with key: desire_sx_sy_gx_gy and value: plan moves
 var old_plans_dictionary = {};
 
+//Id of the other agent and its slice of the map
+const agentCID = "19ab94cad11";
+const agentNum = 0;
+var mySlice
+
 //Listenerfor the map sent by the server
 client.onMap((width, height, tiles) => {
   maxX = width;
@@ -55,6 +60,10 @@ client.onMap((width, height, tiles) => {
   });
   //Once the map is complete calls the function to save the string of the map as a PDDL problem
   mapParser(mapData);
+
+  //Divide the map in slices and save the slice of the agent
+  const [_, slices] = divideMatrix(mapData, maxX, maxY, 2);
+  mySlice = slices[agentNum];
 });
 
 //Get the configuration from the server to get values used to perform score evaluation
@@ -78,16 +87,6 @@ setTimeout(() => { }, 1000);
 //Read the PDDL domain from the file
 readDomain();
 
-// DUPLICATE THE FILE
-//
-// ----------- BASIC -----------
-//TODO: call other agent to share the ID: if the other agent is not present, wait for it to be present
-// if my ID < other ID, i'm the number 0, otherwise i'm the number 1
-// call slice function to get the my slice of the map
-// edit blind move to go only in my slice
-// 
-// ASK FUNCTION for the ID (also SHOUT if #agents > 2)
-// SAY FUNCTION for the parcel location
 // ----------- MEDIUM -----------
 //TODO: duplicate the file. Enable the communication with the other agent
 // when going for a parcel, ask if the expected return if they are going to pick it up:
@@ -110,17 +109,66 @@ client.onYou(({ id, x, y }) => {
   me.y = Math.round(y);
 });
 
+//Function that encodes the parcels sensed by this agent in a message to be sent to the other agent
+function messageEncoderParcel(parcelList) {
+  var message = "p$"
+  for (const p of parcelList) {
+    // p$p0.x.y.carryed.reward_p1.x.y.carryed.reward_p2.x.y.carryed.reward
+    message += p.id + "." + p.x + "." + p.y + "." + p.carriedBy + "." + p.reward + "_"
+  }
+  return message.slice(0, -1)
+}
+
+//Function that encodes the agents sensed by this agent in a message to be sent to the other agent
+function messageEncoderAgent(agentList) {
+  var message = "a$"
+  for (const a of agentList) {
+    // a$a0.x.y_a1.x.y"
+    message += a.id + "." + a.x + "." + a.y + "_"
+  }
+  return message.slice(0, -1)
+}
+
+function checkArrInArr(arr, x, y) {
+  for (const [x1, y1] of arr) {
+    if (x == x1 && y == y1) return true
+  }
+  return false
+}
+
 //Parcel listener to get the parcels position
 var parcels = new Map();
+var companionParcels = new Map();
+var companionParcelsTimes = new Map();
 client.onParcelsSensing(async (perceived_parcels) => {
   parcels = new Map();
+  const parcelsToSend = []
+  //For each parcel sensed by this agent check if it is in its slice
   for (const p of perceived_parcels) {
     if (!p.carriedBy || p.carriedBy == me.id) {
       p.x = Math.round(p.x);
       p.y = Math.round(p.y);
-      parcels.set(p.id, p);
+
+      //If parcel coordinates in mySlice, add it to my parcels
+      if (checkArrInArr(mySlice, p.x, p.y)) parcels.set(p.id, p);
+      else if (!p.carriedBy) {
+        //Otherwise send message to the other agent about it
+        //console.log("Parcel not in my slice, sending to the other agent");
+        parcelsToSend.push(p);
+      }
     }
-    //TODO: if parcel is in my slice, add it, otherwise send message to the other agent about it
+  }
+  //Send the message if there are parcels to send
+  if (parcelsToSend.length > 0) client.say(agentCID, messageEncoderParcel(parcelsToSend));
+
+  //Update the parcels of this agent based on the information received from the other agent
+  for (const [key, value] of companionParcels) {
+    if (!(companionParcelsTimes.get(key) < performance.now() && config.get("parDecInt") != "infinite")) {
+      //If the parcel is not too old add it to our parcels
+      parcels.set(key, value);
+    }
+    companionParcels.delete(key);
+    companionParcelsTimes.delete(key);
   }
 });
 
@@ -128,41 +176,52 @@ client.onParcelsSensing(async (perceived_parcels) => {
 var agents = new Map();
 client.onAgentsSensing(async (perceived_agents) => {
   agents = new Map();
+  const agentsToSend = []
   for (const a of perceived_agents) {
     a.x = Math.round(a.x);
     a.y = Math.round(a.y);
-    agents.set(a.id, a);
-  }
-});
 
-function messageParser(msg){
-  var parsedMessage = msg.split("-");
-  var parcels = [];
-  var agents = [];
-
-  //Maybe conversion from string to number
-  for (const m of parsedMessage){
-    if (m.split("$")[0] == "parcels"){
-      for (const parcel of m.split("$")[1].split("_")){
-        parcelValues = parcel.split(".");
-        parcels.push({id: parcelValues[0], x: parcelValues[1], y: parcelValues[2], carriedBy: parcelValues[3], reward: parcelValues[4]});
-      }
-    } else {
-      for (const agent of m.split("$")[1].split("_")){
-        agentValues = agent.split(".");
-        agents.push({id: agentValues[0], x: agentValues[1], y: agentValues[2]});
-      }
+    //if parcel coordinates in mySlice, add it to my parcels
+    if (checkArrInArr(mySlice, a.x, a.y) && a.id != agentCID) agents.set(a.id, a);
+    else {
+      //send message to the other agent about it
+      //console.log("Agent not in my slice, sending to the other agent");
+      if (a.id != agentCID) agentsToSend.push(a);
     }
   }
+  //Send the message if there are information to send
+  if (agentsToSend.length > 0) client.say(agentCID, messageEncoderAgent(agentsToSend));
+});
 
-  //Push into normal parcels and agents but every time they are refreshed so better separate memory?
+//Parse a received message and update the parcels and agents of this agent
+//Messages of type: p$p0.x.y.carryed.reward_p1.x.y.carryed.reward_p2.x.y.carryed.reward
+//              or: a$a0.x.y_a1.x.y"
+function messageParser(m) {
+  //If the message refers to parcels
+  if (m.split("$")[0] == "p") {
+    //Check every parcel and update the parcels of this agent
+    for (const parcel of m.split("$")[1].split("_")) {
+      var parcelValues = parcel.split(".");
+      companionParcels.set(parcelValues[0], { id: parcelValues[0], x: Number(parcelValues[1]), y: Number(parcelValues[2]), carriedBy: null, reward: Number(parcelValues[4]) });
+      companionParcelsTimes.set(parcelValues[0], performance.now() + (Number(parcelValues[4]) * config.get("parDecInt")));
+    }
+    //If the message refers to agents
+  } else if (m.split("$")[0] == "a") {
+    //Check every agent and update the agents of this agent
+    for (const agent of m.split("$")[1].split("_")) {
+      var agentValues = agent.split(".");
+      agents.set(agentValues[0], { id: agentValues[0], x: Number(agentValues[1]), y: Number(agentValues[2]) });
+    }
+  }
 }
 
-//Messages of type: "parcels$p0.x.y.carryed.reward_p1.x.y.carryed.reward_p2.x.y.carryed.reward-agents$a0.x.y_a1.x.y" to share the parcels position
-const agentCID  = "agent1";
-client.onMsg(async (message) => {
-  if (message.id == agentCID) {
-    messageParser(message.msg);
+//Messages of type: p$p0.x.y.carryed.reward_p1.x.y.carryed.reward_p2.x.y.carryed.reward
+//                  a$a0.x.y_a1.x.y"
+//When the agent receives a message parse it
+client.onMsg(async (a, _, c) => {
+  //console.log("Message received: " + a + _ + c);
+  if (a == agentCID) {
+    messageParser(c);
   }
 });
 
@@ -181,16 +240,16 @@ function weightedBlindMove(agentPosition) {
   for (let i = offset; i < maxX - offset; i++) {
     for (let j = offset; j < maxY - offset; j++) {
       //If the point is not walkable skip it
-      if (mapData[j][i] == 0) continue;
+      if (mapData[i][j] == 0 || !checkArrInArr(mySlice, i, j)) continue;
 
       //Calculate the distance from the agent and if it is less than the observation distance skip it (i'm seeing it)
-      var distance = Math.abs(agentPosition.x - j) + Math.abs(agentPosition.y - i);
+      var distance = Math.abs(agentPosition.x - i) + Math.abs(agentPosition.y - j);
       if (distance < offset) continue;
 
       weight = distance / 5;
       //Push the coordinates in the array with a number of repetitions based on the weight
       for (let k = 0; k < weight; k++) {
-        distances.push({ x: j, y: i, score: Number.MIN_VALUE });
+        distances.push({ x: i, y: j, score: Number.MIN_VALUE });
       }
     }
   }

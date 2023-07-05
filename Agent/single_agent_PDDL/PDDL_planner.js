@@ -10,7 +10,7 @@ var domain, mapObjects = "", beliefMapString = "";
 
 async function readDomain() {
     domain = await new Promise((res, rej) => {
-        fs.readFile('./Agent/single_agent_PDDL/domain.pddl', 'utf8', (err, data) => {
+        fs.readFile('./domain.pddl', 'utf8', (err, data) => {
             if (err) rej(err)
             else res(data)
         })

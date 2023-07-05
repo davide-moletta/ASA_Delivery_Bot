@@ -5,10 +5,11 @@
 // const sizeY = 10;
 // const agents_num = 3;
 
-function divideMatrix(matrix, n, extended = false, verbose = false) {
+function divideMatrix(matrix, maxX, maxY, n, extended = false, verbose = false) {
+  // create a copy of the matrix in mapData
   const mapData = matrix.map((arr) => arr.slice());
-  const numRows = matrix.length;
-  const numCols = matrix[0].length;
+  const numRows = maxX //matrix.length;
+  const numCols = maxY //matrix[0].length;
   const numSlices = n;
   const angle = (2 * Math.PI) / numSlices;
   const center = [Math.floor(numRows / 2), Math.floor(numCols / 2)];
@@ -41,10 +42,11 @@ function divideMatrix(matrix, n, extended = false, verbose = false) {
     }
   }
   if (verbose) console.table(mapData);
-  const mapData2 = mapData.map((arr) => arr.slice());
+  // create a copy of mapData in mapData2
+  const mapData2 = matrix.map((arr) => arr.slice());
 
-  for (let i = 0; i < mapData.length; i++) {
-    for (let j = 0; j < mapData[i].length; j++) {
+  for (let i = 0; i < maxX; i++) {
+    for (let j = 0; j < maxY; j++) {
       var neighbors = getNeighbors(mapData, i, j, extended);
       var neighborsSet = new Set(neighbors);
       var count = 0;
@@ -62,8 +64,8 @@ function divideMatrix(matrix, n, extended = false, verbose = false) {
   for (let i = 0; i < n; i++) {
     slices_final.push([]);
   }
-  for (let i = 0; i < mapData2.length; i++) {
-    for (let j = 0; j < mapData2[i].length; j++) {
+  for (let i = 0; i < maxX; i++) {
+    for (let j = 0; j < maxY; j++) {
       for (let k = 0; k < mapData2[i][j].length; k++) {
         slices_final[mapData2[i][j][k]].push([i, j]);
       }
@@ -84,8 +86,6 @@ function divideMatrix(matrix, n, extended = false, verbose = false) {
 
   return [center_spots, slices_final];
 }
-
-// divide a circle in n equal slices like pizza adapted to a matrix
 
 function getNeighbors(matrix, row, col, extended = false) {
   const numRows = matrix.length;
@@ -122,8 +122,6 @@ function getNeighbors(matrix, row, col, extended = false) {
 }
 
 export { divideMatrix, getNeighbors };
-
-// divide the matrix in n parts
 
 // const mapData = new Array(sizeX).fill(99).map(() => new Array(sizeY).fill(99));
 // const [center_spots, slices_res] = divideMatrix(mapData, agents_num, extended, verbose);
