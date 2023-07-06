@@ -1,7 +1,7 @@
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
-import { planner, goalParser, mapParser, readDomain } from "../utils/PDDL_planner.js";
-import { findDeliveryPoint } from "../utils/astar_utils.js";
-import { divideMatrix } from "../utils/map_utils.js";
+import { planner, goalParser, mapParser, readDomain } from "./PDDL_planner.js";
+import { findDeliveryPoint } from "./astar_utils.js";
+import { divideMatrix } from "./map_utils.js";
 
 
 const client = new DeliverooApi(
