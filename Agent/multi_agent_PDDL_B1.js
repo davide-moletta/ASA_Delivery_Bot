@@ -44,6 +44,7 @@ client.onMap((width, height, tiles) => {
   //For each tile of the map received from the server, if it is a delivery point set the value to 2 and add the point to the delivery point array, otherwise set it to 1
   tiles.forEach((tile) => {
     mapData[tile.x][tile.y] = tile.delivery ? 2 : 1;
+    //Add the walkable points to the blindmove points set
     blindMovePoints.add("" + tile.x + "_" + tile.y)
     if (tile.delivery) {
       delivery_points.push([tile.x, tile.y]);
@@ -163,7 +164,6 @@ client.onAgentsSensing(async (perceived_agents) => {
     if (checkArrInArr(mySlice, a.x, a.y) && a.id != agentCID) agents.set(a.id, a);
     else {
       //send message to the other agent about it
-      //console.log("Agent not in my slice, sending to the other agent");
       if (a.id != agentCID) agentsToSend.push(a);
     }
   }
@@ -197,10 +197,7 @@ function messageParser(m) {
 //                  a$a0.x.y_a1.x.y"
 //When the agent receives a message parse it
 client.onMsg(async (a, _, c) => {
-  //console.log("Message received: " + a + _ + c);
-  if (a == agentCID) {
-    messageParser(c);
-  }
+  if (a == agentCID) messageParser(c);
 });
 
 //----------END OF BELIEF REVISION----------
@@ -217,7 +214,7 @@ function weightedBlindMove(agentPosition) {
   const distances = [];
   for (let i = offset; i < maxX - offset; i++) {
     for (let j = offset; j < maxY - offset; j++) {
-      //If the point is not walkable skip it
+      //If the point is not walkable skip it, not in my slide or not in the blindmove points skip it
       if (mapData[i][j] == 0 || !checkArrInArr(mySlice, i, j) || !blindMovePoints.has("" + i + "_" + j)) continue;
 
       //Calculate the distance from the agent and if it is less than the observation distance skip it (i'm seeing it)
@@ -371,7 +368,7 @@ async function checkOptions() {
 //Check the options every 50ms
 setInterval(async function () {
   await checkOptions();
-}, 50); //config.get("clock"));
+}, 50);
 
 class Agent {
   intention_queue = new Array();
@@ -488,7 +485,7 @@ class Agent {
       } else if (desire == GO_PICK_UP) {
         //If the intention is to pick up we check if there is already an intention to pick up the same parcel
         for (const intention of this.intention_queue) {
-          if (intention.getArgs() == args) { //SHOULD BE !=
+          if (intention.getArgs() == args) {
             console.log("Adding new intention to queue: " + desire);
             const current = new Intention(desire, args);
             this.intention_queue.push(current);
@@ -594,13 +591,14 @@ class Intention extends Promise {
 
           return plan_res;
         } catch (e) {
-          //If the plan fails we stop the intention and add the plan to the failed plans
+          //If the plan fails we stop the intention and remove the point from the blindmove set if we tried to blindmove there
           console.log("plan: " + this.getDesire() + " -- failed while trying to achieve");
           if (this.#desire == BLIND_MOVE) {
             // remove the goal from the set of blindMovePoints
             blindMovePoints.delete("" + this.#args.x + "_" + this.#args.y);
             console.log(blindMovePoints.size)
           }
+          //If the plan fails we stop the intention and add the plan to the failed plans
           if (this.#desire != GO_PUT_DOWN) {
             const key = this.#desire + "_" + me.x + "_" + me.y + "_" + this.#args.x + "_" + this.#args.y;
             if (!old_failed_plans[key]) old_failed_plans[key] = this.#current_plan

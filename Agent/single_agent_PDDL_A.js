@@ -129,7 +129,6 @@ function weightedBlindMove(agentPosition) {
   }
 
   //If there are no points in the distances array return a random walkable point (for example if the agent is seeing all the map)
-  //CAN LOOP FIX
   if (distances.length == 0) {
     var targetX = 0;
     var targetY = 0;
@@ -182,7 +181,7 @@ function averageScore(args, desire, actualScore, parcelsToDeliver) {
     //If the parcel decaying time is not infinite, the score to deliver the parcels is the actual score plus the actual score divided by 5
     //minus the number of parcels to deliver multiplied by the time required to make a move times the distance from the delivery point 
     //divided by the parcel dacaying time
-    const BONUS = actualScore / 5;
+    const BONUS = actualScore / 4;
     return ((actualScore + BONUS) - (parcelsToDeliver * (config.get("moveDur") * distance) / config.get("parDecInt")));
   }
 }
@@ -268,7 +267,7 @@ async function checkOptions() {
 //Check the options every 50ms
 setInterval(async function () {
   await checkOptions();
-}, 50); //config.get("clock"));
+}, 50);
 
 class Agent {
   intention_queue = new Array();
@@ -385,7 +384,7 @@ class Agent {
       } else if (desire == GO_PICK_UP) {
         //If the intention is to pick up we check if there is already an intention to pick up the same parcel
         for (const intention of this.intention_queue) {
-          if (intention.getArgs() == args) { //SHOULD BE !=
+          if (intention.getArgs() == args) {
             console.log("Adding new intention to queue: " + desire);
             const current = new Intention(desire, args);
             this.intention_queue.push(current);

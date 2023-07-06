@@ -48,8 +48,6 @@ client.onMap((width, height, tiles) => {
   mapParser(mapData);
 });
 
-
-
 //Get the configuration from the server to get values used to perform score evaluation
 const config = new Map();
 client.onConfig((conf) => {
@@ -119,6 +117,7 @@ var friendID = "";
 const me = {};
 client.onYou(({ id, x, y }) => {
   me.id = id;
+  //If i don't have my friendID I keep shouting my id
   if (friendID == "") {
     console.log("I don't have the friend ID yet");
     client.shout("i$" + me.id)
@@ -132,7 +131,7 @@ var parcels = new Map();
 client.onParcelsSensing(async (perceived_parcels) => {
   parcels = new Map();
   for (const p of perceived_parcels) {
-    if ((!p.carriedBy || p.carriedBy == me.id) && !blackListedParcels.has(p.id)) { //
+    if ((!p.carriedBy || p.carriedBy == me.id) && !blackListedParcels.has(p.id)) { //If the parcel is not carried by another agent and is not blacklisted
       p.x = Math.round(p.x);
       p.y = Math.round(p.y);
       parcels.set(p.id, p);
@@ -153,25 +152,31 @@ client.onAgentsSensing(async (perceived_agents) => {
 
 //Message of the type: i#myID_targetX_targetY_Score
 function messageParser(m) {
+  //If i receive a message from my friend
   if (m.split("$")[0] == "i") {
+    //If it is of type i i shout my id one last time and save the friend id
     if (friendID == "") {
       client.shout("i$" + me.id)
     }
     friendID = m.split("$")[1]
     console.log("Friend ID: " + friendID)
-    return null
-
+    return
   } else if (m.split("$")[0] == "e") {
+    //If it is of type e
     var info = m.split("$")[1];
     var infoValues = info.split("_");
+    //Save the values of the message and check if it sent from my friend
     if (infoValues[0] == friendID) {
       var x = infoValues[1];
       var y = infoValues[2];
       var parcelId = infoValues[4];
 
+      //If the agent is performing a pickup intention get the current args
       if (myAgent.getCurrentDesire() == GO_PICK_UP) {
         var currentIntentionArgs = myAgent.getCurrentArgs();
+        //If the parcel is the one i want to pick up
         if (currentIntentionArgs.x == x && currentIntentionArgs.y == y) {
+          //Calculate the average score of the agent for the parcel that both agents want to pick up
           var actualScore = 0;
           var parcelsToDeliver = 0;
           for (const parcel of parcels.values()) {
@@ -186,12 +191,14 @@ function messageParser(m) {
         }
       }
     }
+    //If i'm not interested in the parcel i return the minimum value
     return "" + Number.MIN_VALUE;
   } else if (m.split("$")[0] == "s") {
+    //If the message is of type s i save the parcel id in the black list and stop my intention since i lost
     console.log("I'm stopping since the other agent told me so");
     blackListedParcels.add(parcelId);
     myAgent.stop();
-    return null
+    return;
   }
 }
 
@@ -199,6 +206,7 @@ client.onMsg(async (id, name, message, reply) => {
   console.log("Message received: " + id + message + name);
   if (message.split("$")[0] == "i" || id == friendID) {
     const response = messageParser(message);
+    //If the other agent asked me something i reply with the score
     if (reply) try { reply(response) } catch { (error) => console.error(error) }
   }
 });
@@ -217,7 +225,7 @@ function weightedBlindMove(agentPosition) {
   const distances = [];
   for (let i = offset; i < maxX - offset; i++) {
     for (let j = offset; j < maxY - offset; j++) {
-      //If the point is not walkable skip it
+      //If the point is not in the blindmove set skip it
       if (!blindMovePoints.has("" + i + "_" + j)) continue;
 
       //Calculate the distance from the agent and if it is less than the observation distance skip it (i'm seeing it)
@@ -324,6 +332,7 @@ async function checkOptions() {
     }
   }
 
+  //Calls the function which coordinates the intentions between the two agents
   await myAgent.intentionCoordination();
 
   //The best option is added to the intention queue
@@ -332,7 +341,7 @@ async function checkOptions() {
 //Check the options every 50ms
 setInterval(async function () {
   await checkOptions();
-}, 50); //config.get("clock"));
+}, 50);
 
 class Agent {
   intention_queue = new Array();
@@ -374,13 +383,17 @@ class Agent {
     else return null;
   }
 
+  //Coordinate the intentions between the agents
   async intentionCoordination() {
+    //Skip the coordination if the agent is not doing anything, if it is not picking up, if it doesn't have the id of it's friend or if the parcel is 
+    // blacklisted or whitelisted since it is already being coordinated
     if (friendID == "") return false;
     if (!this.current_intention) return false;
     if (this.current_intention.getDesire() != GO_PICK_UP) return false;
     if (blackListedParcels.has(this.current_intention.getArgs().id)) return false;
     if (whiteListedParcels.has(this.current_intention.getArgs().id)) return false;
 
+    //Calculate the score of the current intention
     var actualScore = 0;
     var parcelsToDeliver = 0;
     for (const parcel of parcels.values()) {
@@ -389,21 +402,25 @@ class Agent {
         parcelsToDeliver++;
       }
     }
-
     var possibleScore = averageScore(this.current_intention.getArgs(), this.current_intention.getDesire(), actualScore, parcelsToDeliver);
 
+    //Builds the message for the other agent
     const message = "e$" + me.id + "_" + this.current_intention.getArgs().x + "_" + this.current_intention.getArgs().y + "_" + possibleScore + "_" + this.current_intention.getArgs().id;
     const parID = this.current_intention.getArgs().id
 
+    //Ask the other agent if it has a higher score and wait for response
     var response = await client.ask(friendID, message);
-    console.log(response)
+
+    //If my score is higher
     if (Number(response) <= possibleScore) {
+      //If the other agent's score is not minimum value, I tell him to stop and add the parcel to the whitelist
       if (Number(response) != Number.MIN_VALUE) {
         console.log("I tell my friend to stop");
         await client.say(friendID, "s$");
         whiteListedParcels.add(parID);
       }
     } else {
+      //If the other agent's score is higher, I stop and add the parcel to the blacklist
       console.log("My friend has a higher score, so I will stop");
       blackListedParcels.add(parID);
       this.current_intention.stop();
@@ -491,7 +508,7 @@ class Agent {
       } else if (desire == GO_PICK_UP) {
         //If the intention is to pick up we check if there is already an intention to pick up the same parcel
         for (const intention of this.intention_queue) {
-          if (intention.getArgs() == args) { //SHOULD BE !=
+          if (intention.getArgs() == args) {
             console.log("Adding new intention to queue: " + desire);
             const current = new Intention(desire, args);
             this.intention_queue.push(current);
@@ -597,13 +614,14 @@ class Intention extends Promise {
 
           return plan_res;
         } catch (e) {
-          //If the plan fails we stop the intention and add the plan to the failed plans
           console.log("plan: " + this.getDesire() + " -- failed while trying to achieve");
+          //If the plan fails we stop the intention and remove the point from the blindmove set if we tried to blindmove there
           if (this.#desire == BLIND_MOVE) {
             // remove the goal from the set of blindMovePoints
             blindMovePoints.delete("" + this.#args.x + "_" + this.#args.y);
             console.log(blindMovePoints.size)
           }
+          //If the plan fails we stop the intention and add the plan to the failed plans
           if (this.#desire != GO_PUT_DOWN) {
             const key = this.#desire + "_" + me.x + "_" + me.y + "_" + this.#args.x + "_" + this.#args.y;
             if (!old_failed_plans[key]) old_failed_plans[key] = this.#current_plan

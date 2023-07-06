@@ -1,6 +1,8 @@
+//Find the closest delivery point from the agent position
 function findDeliveryPoint(my_x, my_y, delivery_points) {
   let closestDeliveryPoint = { x: 0, y: 0 };
   let closestDistance = 1000000;
+  //For each point in the delivery_points array, calculate the distance from the agent position
   delivery_points.forEach((point) => {
     const dist = distance({ x: my_x, y: my_y }, { x: point[0], y: point[1] });
     if (dist < closestDistance) {
@@ -8,6 +10,7 @@ function findDeliveryPoint(my_x, my_y, delivery_points) {
       closestDeliveryPoint = { x: point[0], y: point[1] };
     }
   });
+  //Return the closest delivery point
   return closestDeliveryPoint;
 }
 
@@ -50,6 +53,7 @@ class GridPoint {
   }
 }
 
+//Heuristic function to calculate the distance between two points
 function manhattanHeuristic(position0, position1) {
   let d1 = Math.abs(position1.x - position0.x);
   let d2 = Math.abs(position1.y - position0.y);
@@ -57,19 +61,8 @@ function manhattanHeuristic(position0, position1) {
   return d1 + d2;
 }
 
-function init(
-  currentX,
-  currentY,
-  targetX,
-  targetY,
-  grid,
-  openSet,
-  start,
-  end,
-  cols,
-  rows,
-  mapData
-) {
+//Initialize the grid
+function init(currentX, currentY, targetX, targetY, grid, openSet, start, end, cols, rows, mapData) {
   //making a 2D array
   for (let i = 0; i < cols; i++) {
     grid[i] = new Array(rows);
@@ -95,15 +88,7 @@ function init(
   return [start, end];
 }
 
-function getMovements(
-  currentX,
-  currentY,
-  targetX,
-  targetY,
-  mapData,
-  maxX,
-  maxY
-) {
+function getMovements(currentX, currentY, targetX, targetY, mapData, maxX, maxY) {
   const path = [];
   const movemements = [];
   let openSet = []; //array containing unevaluated grid points
@@ -114,19 +99,8 @@ function getMovements(
   let start;
   let end;
 
-  [start, end] = init(
-    currentX,
-    currentY,
-    targetX,
-    targetY,
-    grid,
-    openSet,
-    start,
-    end,
-    cols,
-    rows,
-    mapData
-  );
+  //Call the init function to initialize the grid
+  [start, end] = init(currentX, currentY, targetX, targetY, grid, openSet, start, end, cols, rows, mapData);
 
   while (openSet.length > 0) {
     //assumption lowest index is the first one to begin with
@@ -148,6 +122,7 @@ function getMovements(
         temp = temp.parent;
       }
 
+      //remove the first element from the array and returns the reverse of the movements done to be deliveroo-readable
       movemements.pop();
       return movemements.reverse();
     }
