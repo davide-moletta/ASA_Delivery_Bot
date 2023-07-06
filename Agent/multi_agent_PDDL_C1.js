@@ -9,17 +9,6 @@ const client = new DeliverooApi(
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjE5YWI5NGNhZDExIiwibmFtZSI6IkMiLCJpYXQiOjE2ODg1NjQ1ODF9.mfvIzCBAauG8zj6HeMTC8gJW_hy0i0O7bRUXdH6fBKs"
 );
 
-//TODO
-// - update weights for not infinite environments
-
-//EXTRA
-// - update weights dynamically
-// - insert intention revision on queue
-// - modify the queue function
-
-//FIX 
-// - use the clock to check options
-
 //Possible desires of our agent
 const GO_PUT_DOWN = "go_put_down";
 const GO_PICK_UP = "go_pick_up";
@@ -30,6 +19,7 @@ let maxX = 0;
 let maxY = 0;
 var mapData;
 const delivery_points = [];
+const blindMovePoints = new Set();
 
 //Memory of the agent about intentions and plans
 const plans = [];
@@ -54,6 +44,7 @@ client.onMap((width, height, tiles) => {
   //For each tile of the map received from the server, if it is a delivery point set the value to 2 and add the point to the delivery point array, otherwise set it to 1
   tiles.forEach((tile) => {
     mapData[tile.x][tile.y] = tile.delivery ? 2 : 1;
+    blindMovePoints.add("" + tile.x + "_" + tile.y)
     if (tile.delivery) {
       delivery_points.push([tile.x, tile.y]);
     }
@@ -228,7 +219,7 @@ function weightedBlindMove(agentPosition) {
   for (let i = offset; i < maxX - offset; i++) {
     for (let j = offset; j < maxY - offset; j++) {
       //If the point is not walkable skip it
-      if (mapData[i][j] == 0 || !checkArrInArr(mySlice, i, j)) continue;
+      if (mapData[i][j] == 0 || !checkArrInArr(mySlice, i, j) || !blindMovePoints.has("" + i + "_" + j)) continue;
 
       //Calculate the distance from the agent and if it is less than the observation distance skip it (i'm seeing it)
       var distance = Math.abs(agentPosition.x - i) + Math.abs(agentPosition.y - j);
@@ -250,7 +241,7 @@ function weightedBlindMove(agentPosition) {
     do {
       targetX = Math.floor(Math.random() * maxX);
       targetY = Math.floor(Math.random() * maxY);
-    } while (mapData[targetX][targetY] == 0);
+    } while (mapData[targetX][targetY] == 0 || !blindMovePoints.has("" + targetX + "_" + targetY));
 
     return { x: targetX, y: targetY, score: Number.MIN_VALUE };
   }
@@ -607,6 +598,11 @@ class Intention extends Promise {
         } catch (e) {
           //If the plan fails we stop the intention and add the plan to the failed plans
           console.log("plan: " + this.getDesire() + " -- failed while trying to achieve");
+          if (this.#desire == BLIND_MOVE) {
+            // remove the goal from the set of blindMovePoints
+            blindMovePoints.delete("" + this.#args.x + "_" + this.#args.y);
+            console.log(blindMovePoints.size)
+          }
           if (this.#desire != GO_PUT_DOWN) {
             const key = this.#desire + "_" + me.x + "_" + me.y + "_" + this.#args.x + "_" + this.#args.y;
             if (!old_failed_plans[key]) old_failed_plans[key] = this.#current_plan
