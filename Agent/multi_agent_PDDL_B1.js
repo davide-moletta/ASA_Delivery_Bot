@@ -1,12 +1,12 @@
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
-import { planner, goalParser, mapParser, readDomain } from "./PDDL_planner.js";
-import { findDeliveryPoint } from "../utils/astar_utils.js";
-import { divideMatrix } from "../utils/map_utils.js";
+import { planner, goalParser, mapParser, readDomain } from "./utils/PDDL_planner.js";
+import { findDeliveryPoint } from "./utils/astar_utils.js";
+import { divideMatrix } from "./utils/map_utils.js";
 
 
 const client = new DeliverooApi(
-  "http://localhost:8080/?name=C",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjE5YWI5NGNhZDExIiwibmFtZSI6IkMiLCJpYXQiOjE2ODg1NjQ1ODF9.mfvIzCBAauG8zj6HeMTC8gJW_hy0i0O7bRUXdH6fBKs"
+  "http://localhost:8080/?name=B",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNlYzhmY2FjODBkIiwibmFtZSI6IkIiLCJpYXQiOjE2ODg1NjM4MDR9.531WUUKu4DF5zz9KYBlUoHoW7rQqqhQjnz8mUonfpUQ"
 );
 
 //TODO
@@ -39,8 +39,8 @@ const old_failed_plans = {}
 var old_plans_dictionary = {};
 
 //Id of the other agent and its slice of the map
-const agentBID = "cec8fcac80d";
-const agentNum = 1;
+const agentCID = "19ab94cad11";
+const agentNum = 0;
 var mySlice
 
 //Listenerfor the map sent by the server
@@ -147,7 +147,7 @@ client.onParcelsSensing(async (perceived_parcels) => {
     }
   }
   //Send the message if there are parcels to send
-  if (parcelsToSend.length > 0) client.say(agentBID, messageEncoderParcel(parcelsToSend));
+  if (parcelsToSend.length > 0) client.say(agentCID, messageEncoderParcel(parcelsToSend));
 
   //Update the parcels of this agent based on the information received from the other agent
   for (const [key, value] of companionParcels) {
@@ -170,15 +170,15 @@ client.onAgentsSensing(async (perceived_agents) => {
     a.y = Math.round(a.y);
 
     //if parcel coordinates in mySlice, add it to my parcels
-    if (checkArrInArr(mySlice, a.x, a.y) && a.id != agentBID) agents.set(a.id, a);
+    if (checkArrInArr(mySlice, a.x, a.y) && a.id != agentCID) agents.set(a.id, a);
     else {
       //send message to the other agent about it
       //console.log("Agent not in my slice, sending to the other agent");
-      if (a.id != agentBID) agentsToSend.push(a);
+      if (a.id != agentCID) agentsToSend.push(a);
     }
   }
   //Send the message if there are information to send
-  if (agentsToSend.length > 0) client.say(agentBID, messageEncoderAgent(agentsToSend));
+  if (agentsToSend.length > 0) client.say(agentCID, messageEncoderAgent(agentsToSend));
 });
 
 //Parse a received message and update the parcels and agents of this agent
@@ -208,7 +208,7 @@ function messageParser(m) {
 //When the agent receives a message parse it
 client.onMsg(async (a, _, c) => {
   //console.log("Message received: " + a + _ + c);
-  if (a == agentBID) {
+  if (a == agentCID) {
     messageParser(c);
   }
 });
