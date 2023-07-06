@@ -1,10 +1,10 @@
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
-import { planner, goalParser, mapParser, readDomain } from "./utils/PDDL_planner.js";
-import { findDeliveryPoint } from "./utils/astar_utils.js";
+import { planner, goalParser, mapParser, readDomain } from "./PDDL_planner.js";
+import { findDeliveryPoint } from "./astar_utils.js";
 
 const client = new DeliverooApi(
-  "http://localhost:8080/?name=Cannarsi",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjA5ZDBiMDA0NDdlIiwibmFtZSI6IkNhbm5hcnNpIiwiaWF0IjoxNjgyMDk4NTI0fQ.juYE2bZS6jm8ghTqrpfheFSVSjpIz_C1s-bPIj4LN1w"
+  "http://localhost:8080/?name=A",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImEwNjkwNmVlNGNjIiwibmFtZSI6IkEiLCJpYXQiOjE2ODg2NTc2Mjl9.BOfdZ63naCjNS8c_EU4-2WnQO7U7YWb_EMHDD8sxMTI"
 );
 
 //Possible desires of our agent
