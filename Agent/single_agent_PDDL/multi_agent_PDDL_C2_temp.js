@@ -1,8 +1,6 @@
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
 import { planner, goalParser, mapParser, readDomain } from "./PDDL_planner.js";
 import { findDeliveryPoint } from "../utils/astar_utils.js";
-import { divideMatrix } from "../utils/map_utils.js";
-
 
 const client = new DeliverooApi(
   "http://localhost:8080/?name=C",
@@ -10,6 +8,7 @@ const client = new DeliverooApi(
 );
 
 //TODO
+// - messages
 // - update weights for not infinite environments
 
 //EXTRA
@@ -18,6 +17,7 @@ const client = new DeliverooApi(
 // - modify the queue function
 
 //FIX 
+// - possible loop in weighted blind move
 // - use the clock to check options
 
 //Possible desires of our agent
@@ -34,14 +34,10 @@ const delivery_points = [];
 //Memory of the agent about intentions and plans
 const plans = [];
 var supportMemory = new Map();
+const blackListedParcels = new Set(); // we save the ids of the parcels we left to the other agent
 const old_failed_plans = {}
 //Old_plans_dictionary with key: desire_sx_sy_gx_gy and value: plan moves
 var old_plans_dictionary = {};
-
-//Id of the other agent and its slice of the map
-const agentBID = "cec8fcac80d";
-const agentNum = 1;
-var mySlice
 
 //Listenerfor the map sent by the server
 client.onMap((width, height, tiles) => {
@@ -60,10 +56,6 @@ client.onMap((width, height, tiles) => {
   });
   //Once the map is complete calls the function to save the string of the map as a PDDL problem
   mapParser(mapData);
-
-  //Divide the map in slices and save the slice of the agent
-  const [_, slices] = divideMatrix(mapData, maxX, maxY, 2);
-  mySlice = slices[agentNum];
 });
 
 //Get the configuration from the server to get values used to perform score evaluation
@@ -86,179 +78,6 @@ setTimeout(() => { }, 1000);
 
 //Read the PDDL domain from the file
 readDomain();
-
-//----------BELIEF REVISION----------
-
-//Me listener to get the agent id and position
-const me = {};
-client.onYou(({ id, x, y }) => {
-  me.id = id;
-  me.x = Math.round(x);
-  me.y = Math.round(y);
-});
-
-//Function that encodes the parcels sensed by this agent in a message to be sent to the other agent
-function messageEncoderParcel(parcelList) {
-  var message = "p$"
-  for (const p of parcelList) {
-    // p$p0.x.y.carryed.reward_p1.x.y.carryed.reward_p2.x.y.carryed.reward
-    message += p.id + "." + p.x + "." + p.y + "." + p.carriedBy + "." + p.reward + "_"
-  }
-  return message.slice(0, -1)
-}
-
-//Function that encodes the agents sensed by this agent in a message to be sent to the other agent
-function messageEncoderAgent(agentList) {
-  var message = "a$"
-  for (const a of agentList) {
-    // a$a0.x.y_a1.x.y"
-    message += a.id + "." + a.x + "." + a.y + "_"
-  }
-  return message.slice(0, -1)
-}
-
-function checkArrInArr(arr, x, y) {
-  for (const [x1, y1] of arr) {
-    if (x == x1 && y == y1) return true
-  }
-  return false
-}
-
-//Parcel listener to get the parcels position
-var parcels = new Map();
-var companionParcels = new Map();
-var companionParcelsTimes = new Map();
-client.onParcelsSensing(async (perceived_parcels) => {
-  parcels = new Map();
-  const parcelsToSend = []
-  //For each parcel sensed by this agent check if it is in its slice
-  for (const p of perceived_parcels) {
-    if (!p.carriedBy || p.carriedBy == me.id) {
-      p.x = Math.round(p.x);
-      p.y = Math.round(p.y);
-
-      //If parcel coordinates in mySlice, add it to my parcels
-      if (checkArrInArr(mySlice, p.x, p.y)) parcels.set(p.id, p);
-      else if (!p.carriedBy) {
-        //Otherwise send message to the other agent about it
-        //console.log("Parcel not in my slice, sending to the other agent");
-        parcelsToSend.push(p);
-      }
-    }
-  }
-  //Send the message if there are parcels to send
-  if (parcelsToSend.length > 0) client.say(agentBID, messageEncoderParcel(parcelsToSend));
-
-  //Update the parcels of this agent based on the information received from the other agent
-  for (const [key, value] of companionParcels) {
-    if (!(companionParcelsTimes.get(key) < performance.now() && config.get("parDecInt") != "infinite")) {
-      //If the parcel is not too old add it to our parcels
-      parcels.set(key, value);
-    }
-    companionParcels.delete(key);
-    companionParcelsTimes.delete(key);
-  }
-});
-
-//Agents listener to get the other agents position
-var agents = new Map();
-client.onAgentsSensing(async (perceived_agents) => {
-  agents = new Map();
-  const agentsToSend = []
-  for (const a of perceived_agents) {
-    a.x = Math.round(a.x);
-    a.y = Math.round(a.y);
-
-    //if parcel coordinates in mySlice, add it to my parcels
-    if (checkArrInArr(mySlice, a.x, a.y) && a.id != agentBID) agents.set(a.id, a);
-    else {
-      //send message to the other agent about it
-      //console.log("Agent not in my slice, sending to the other agent");
-      if (a.id != agentBID) agentsToSend.push(a);
-    }
-  }
-  //Send the message if there are information to send
-  if (agentsToSend.length > 0) client.say(agentBID, messageEncoderAgent(agentsToSend));
-});
-
-//Parse a received message and update the parcels and agents of this agent
-//Messages of type: p$p0.x.y.carryed.reward_p1.x.y.carryed.reward_p2.x.y.carryed.reward
-//              or: a$a0.x.y_a1.x.y"
-function messageParser(m) {
-  //If the message refers to parcels
-  if (m.split("$")[0] == "p") {
-    //Check every parcel and update the parcels of this agent
-    for (const parcel of m.split("$")[1].split("_")) {
-      var parcelValues = parcel.split(".");
-      companionParcels.set(parcelValues[0], { id: parcelValues[0], x: Number(parcelValues[1]), y: Number(parcelValues[2]), carriedBy: null, reward: Number(parcelValues[4]) });
-      companionParcelsTimes.set(parcelValues[0], performance.now() + (Number(parcelValues[4]) * config.get("parDecInt")));
-    }
-    //If the message refers to agents
-  } else if (m.split("$")[0] == "a") {
-    //Check every agent and update the agents of this agent
-    for (const agent of m.split("$")[1].split("_")) {
-      var agentValues = agent.split(".");
-      agents.set(agentValues[0], { id: agentValues[0], x: Number(agentValues[1]), y: Number(agentValues[2]) });
-    }
-  }
-}
-
-//Messages of type: p$p0.x.y.carryed.reward_p1.x.y.carryed.reward_p2.x.y.carryed.reward
-//                  a$a0.x.y_a1.x.y"
-//When the agent receives a message parse it
-client.onMsg(async (a, _, c) => {
-  //console.log("Message received: " + a + _ + c);
-  if (a == agentBID) {
-    messageParser(c);
-  }
-});
-
-//----------END OF BELIEF REVISION----------
-
-//Generate and return random coordinates with higher probability for further positions
-function weightedBlindMove(agentPosition) {
-  //Create an offset to avoid cells in the FOV of the agent
-  const offset = Math.ceil(config.get("parObsDist") / 2);
-
-  //Varaible weight to give a higher probability to further positions
-  var weight;
-
-  //Calculate the distances from the agent to each coordinate
-  const distances = [];
-  for (let i = offset; i < maxX - offset; i++) {
-    for (let j = offset; j < maxY - offset; j++) {
-      //If the point is not walkable skip it
-      if (mapData[i][j] == 0 || !checkArrInArr(mySlice, i, j)) continue;
-
-      //Calculate the distance from the agent and if it is less than the observation distance skip it (i'm seeing it)
-      var distance = Math.abs(agentPosition.x - i) + Math.abs(agentPosition.y - j);
-      if (distance < offset) continue;
-
-      weight = distance / 5;
-      //Push the coordinates in the array with a number of repetitions based on the weight
-      for (let k = 0; k < weight; k++) {
-        distances.push({ x: i, y: j, score: Number.MIN_VALUE });
-      }
-    }
-  }
-
-  //If there are no points in the distances array return a random walkable point (for example if the agent is seeing all the map)
-  //CAN LOOP FIX
-  if (distances.length == 0) {
-    var targetX = 0;
-    var targetY = 0;
-    do {
-      targetX = Math.floor(Math.random() * maxX);
-      targetY = Math.floor(Math.random() * maxY);
-    } while (mapData[targetX][targetY] == 0);
-
-    return { x: targetX, y: targetY, score: Number.MIN_VALUE };
-  }
-
-  //Sort the coordinates randomly and return a random one
-  distances.sort(() => Math.random() - 0.5);
-  return distances[Math.floor(Math.random() * distances.length)];
-}
 
 //Calculate an ideal score based on the beliefs of the agent to select the best option
 function averageScore(args, desire, actualScore, parcelsToDeliver) {
@@ -299,6 +118,149 @@ function averageScore(args, desire, actualScore, parcelsToDeliver) {
     const BONUS = actualScore / 5;
     return ((actualScore + BONUS) - (parcelsToDeliver * (config.get("moveDur") * distance) / config.get("parDecInt")));
   }
+}
+
+//----------BELIEF REVISION----------
+
+//Me listener to get the agent id and position
+var friendID = "";
+const me = {};
+client.onYou(({ id, x, y }) => {
+  me.id = id;
+  if (friendID == "") {
+    console.log("I don't have the friend ID yet");
+    client.shout("i$" + me.id)
+  }
+  me.x = Math.round(x);
+  me.y = Math.round(y);
+});
+
+//Parcel listener to get the parcels position
+var parcels = new Map();
+client.onParcelsSensing(async (perceived_parcels) => {
+  parcels = new Map();
+  for (const p of perceived_parcels) {
+    if ((!p.carriedBy || p.carriedBy == me.id) && !blackListedParcels.has(p.id)) {
+      p.x = Math.round(p.x);
+      p.y = Math.round(p.y);
+      parcels.set(p.id, p);
+    }
+  }
+});
+
+//Agents listener to get the other agents position
+var agents = new Map();
+client.onAgentsSensing(async (perceived_agents) => {
+  agents = new Map();
+  for (const a of perceived_agents) {
+    a.x = Math.round(a.x);
+    a.y = Math.round(a.y);
+    agents.set(a.id, a);
+  }
+});
+
+//Message of the type: i#myID_targetX_targetY_Score
+async function messageParser(m) {
+  if (m.split("$")[0] == "i") {
+    if (friendID == "") {
+      client.shout("i$" + me.id)
+    }
+    friendID = m.split("$")[1]
+    console.log("Friend ID: " + friendID)
+
+  } else if (m.split("$")[0] == "e") {
+    var info = m.split("$")[1];
+    var infoValues = info.split("_");
+    if (infoValues[0] == friendID) {
+      var x = infoValues[1];
+      var y = infoValues[2];
+      var friendScore = infoValues[3];
+      var parcelId = infoValues[4];
+
+      if (myAgent.getCurrentDesire() == GO_PICK_UP) {
+        var currentIntentionArgs = myAgent.getCurrentArgs();
+        if (currentIntentionArgs.x == x && currentIntentionArgs.y == y) {
+          var actualScore = 0;
+          var parcelsToDeliver = 0;
+          for (const parcel of parcels.values()) {
+            if (parcel.carriedBy == me.id) {
+              actualScore += parcel.reward;
+              parcelsToDeliver++;
+            }
+          }
+
+          var myScore = averageScore(currentIntentionArgs, myAgent.getCurrentDesire(), actualScore, parcelsToDeliver);
+
+          if (myScore <= friendScore) {
+            console.log("I stop my intention: the other agent has a better score");
+            blackListedParcels.add(parcelId);
+            await myAgent.stop();
+          } else {
+            console.log("I tell the other agent to stop since my score is better");
+            client.say(friendID, "s$" + me.id);
+          }
+        }
+      }
+    }
+  } else if (m.split("$")[0] == "s") {
+    console.log("I'm stopping since the other agent told me so");
+    blackListedParcels.add(parcelId);
+    await myAgent.stop();
+  }
+}
+
+client.onMsg(async (a, _, c) => {
+  console.log("Message received: " + a + _ + c);
+  if (c.split("$")[0] == "i" || a == friendID) {
+    messageParser(c);
+  }
+});
+
+//----------END OF BELIEF REVISION----------
+
+//Generate and return random coordinates with higher probability for further positions
+function weightedBlindMove(agentPosition) {
+  //Create an offset to avoid cells in the FOV of the agent
+  const offset = Math.ceil(config.get("parObsDist") / 2);
+
+  //Varaible weight to give a higher probability to further positions
+  var weight;
+
+  //Calculate the distances from the agent to each coordinate
+  const distances = [];
+  for (let i = offset; i < maxX - offset; i++) {
+    for (let j = offset; j < maxY - offset; j++) {
+      //If the point is not walkable skip it
+      if (mapData[j][i] == 0) continue;
+
+      //Calculate the distance from the agent and if it is less than the observation distance skip it (i'm seeing it)
+      var distance = Math.abs(agentPosition.x - j) + Math.abs(agentPosition.y - i);
+      if (distance < offset) continue;
+
+      weight = distance / 5;
+      //Push the coordinates in the array with a number of repetitions based on the weight
+      for (let k = 0; k < weight; k++) {
+        distances.push({ x: j, y: i, score: Number.MIN_VALUE });
+      }
+    }
+  }
+
+  //If there are no points in the distances array return a random walkable point (for example if the agent is seeing all the map)
+  //CAN LOOP FIX
+  if (distances.length == 0) {
+    var targetX = 0;
+    var targetY = 0;
+    do {
+      targetX = Math.floor(Math.random() * maxX);
+      targetY = Math.floor(Math.random() * maxY);
+    } while (mapData[targetX][targetY] == 0);
+
+    return { x: targetX, y: targetY, score: Number.MIN_VALUE };
+  }
+
+  //Sort the coordinates randomly and return a random one
+  distances.sort(() => Math.random() - 0.5);
+  return distances[Math.floor(Math.random() * distances.length)];
 }
 
 //Check the environment to search for the best possible action to take
@@ -397,6 +359,7 @@ class Agent {
       const intention = this.intention_queue[0];
 
       if (intention) {
+        if (intention.getDesire() == GO_PICK_UP) await this.intentionCoordination(intention);
         this.current_intention = intention;
         try {
           await intention.achieve();
@@ -417,6 +380,29 @@ class Agent {
   getCurrentDesire() {
     if (this.current_intention) return this.current_intention.getDesire();
     else return null;
+  }
+
+  getCurrentArgs() {
+    if (this.current_intention) return this.current_intention.getArgs();
+    else return null;
+  }
+
+  async intentionCoordination(intention) {
+    if (friendID == "") return false;
+
+    var actualScore = 0;
+    var parcelsToDeliver = 0;
+    for (const parcel of parcels.values()) {
+      if (parcel.carriedBy == me.id) {
+        actualScore += parcel.reward;
+        parcelsToDeliver++;
+      }
+    }
+
+    var possibleScore = averageScore(intention.getArgs(), intention.getDesire(), actualScore, parcelsToDeliver);
+
+    var message = "e$" + me.id + "_" + intention.getArgs().x + "_" + intention.getArgs().y + "_" + possibleScore + "_" + intention.getArgs().id;
+    return await client.say(friendID, message);
   }
 
   //Intention revision

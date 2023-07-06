@@ -3,8 +3,8 @@ import { planner, goalParser, mapParser, readDomain } from "./PDDL_planner.js";
 import { findDeliveryPoint } from "../utils/astar_utils.js";
 
 const client = new DeliverooApi(
-  "http://localhost:8080/?name=Cannarsi",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjA5ZDBiMDA0NDdlIiwibmFtZSI6IkNhbm5hcnNpIiwiaWF0IjoxNjgyMDk4NTI0fQ.juYE2bZS6jm8ghTqrpfheFSVSjpIz_C1s-bPIj4LN1w"
+  "http://localhost:8080/?name=B",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNlYzhmY2FjODBkIiwibmFtZSI6IkIiLCJpYXQiOjE2ODg1NjM4MDR9.531WUUKu4DF5zz9KYBlUoHoW7rQqqhQjnz8mUonfpUQ"
 );
 
 //TODO
@@ -34,6 +34,9 @@ const delivery_points = [];
 //Memory of the agent about intentions and plans
 const plans = [];
 var supportMemory = new Map();
+const blackListedParcels = new Set(); // we save the ids of the parcels we left to the other agent
+const whiteListedParcels = new Set(); // we save the ids of the parcels we took from the other agent
+const blindMovePoints = new Set();
 const old_failed_plans = {}
 //Old_plans_dictionary with key: desire_sx_sy_gx_gy and value: plan moves
 var old_plans_dictionary = {};
@@ -49,6 +52,7 @@ client.onMap((width, height, tiles) => {
   //For each tile of the map received from the server, if it is a delivery point set the value to 2 and add the point to the delivery point array, otherwise set it to 1
   tiles.forEach((tile) => {
     mapData[tile.x][tile.y] = tile.delivery ? 2 : 1;
+    blindMovePoints.add("" + tile.x + "_" + tile.y)
     if (tile.delivery) {
       delivery_points.push([tile.x, tile.y]);
     }
@@ -56,6 +60,8 @@ client.onMap((width, height, tiles) => {
   //Once the map is complete calls the function to save the string of the map as a PDDL problem
   mapParser(mapData);
 });
+
+
 
 //Get the configuration from the server to get values used to perform score evaluation
 const config = new Map();
@@ -76,118 +82,7 @@ client.onConfig((conf) => {
 setTimeout(() => { }, 1000);
 
 //Read the PDDL domain from the file
-var friendID = null;
 readDomain();
-function messageParser(m) {
-  if(m.split("$")[0] == "i"){
-    friendID = m.split("$")[1]
-    console.log("Friend ID: " + friendID)
-  }
-  // //If the message refers to parcels
-  // else if (m.split("$")[0] == "p") {
-  //   //Check every parcel and update the parcels of this agent
-  //   for (const parcel of m.split("$")[1].split("_")) {
-  //     var parcelValues = parcel.split(".");
-  //     companionParcels.set(parcelValues[0], { id: parcelValues[0], x: Number(parcelValues[1]), y: Number(parcelValues[2]), carriedBy: null, reward: Number(parcelValues[4]) });
-  //     companionParcelsTimes.set(parcelValues[0], performance.now() + (Number(parcelValues[4]) * config.get("parDecInt")));
-  //   }
-  //   //If the message refers to agents
-  // } else if (m.split("$")[0] == "a") {
-  //   //Check every agent and update the agents of this agent
-  //   for (const agent of m.split("$")[1].split("_")) {
-  //     var agentValues = agent.split(".");
-  //     agents.set(agentValues[0], { id: agentValues[0], x: Number(agentValues[1]), y: Number(agentValues[2]) });
-  //   }
-  // }
-}
-//----------BELIEF REVISION----------
-
-//Me listener to get the agent id and position
-const me = {};
-client.onYou(({ id, x, y }) => {
-  me.id = id;
-  if(friendID == null) client.shout("i$" + me.id)
-  me.x = Math.round(x);
-  me.y = Math.round(y);
-});
-
-client.onMsg(async (a, _, c) => {
-  //console.log("Message received: " + a + _ + c);
-  if(c.split("$")[0] == "i" || a == friendID) {
-    messageParser(c);
-  }
-});
-
-//Parcel listener to get the parcels position
-var parcels = new Map();
-client.onParcelsSensing(async (perceived_parcels) => {
-  parcels = new Map();
-  for (const p of perceived_parcels) {
-    if (!p.carriedBy || p.carriedBy == me.id) {
-      p.x = Math.round(p.x);
-      p.y = Math.round(p.y);
-      parcels.set(p.id, p);
-    }
-  }
-});
-
-//Agents listener to get the other agents position
-var agents = new Map();
-client.onAgentsSensing(async (perceived_agents) => {
-  agents = new Map();
-  for (const a of perceived_agents) {
-    a.x = Math.round(a.x);
-    a.y = Math.round(a.y);
-    agents.set(a.id, a);
-  }
-});
-
-//----------END OF BELIEF REVISION----------
-
-//Generate and return random coordinates with higher probability for further positions
-function weightedBlindMove(agentPosition) {
-  //Create an offset to avoid cells in the FOV of the agent
-  const offset = Math.ceil(config.get("parObsDist") / 2);
-
-  //Varaible weight to give a higher probability to further positions
-  var weight;
-
-  //Calculate the distances from the agent to each coordinate
-  const distances = [];
-  for (let i = offset; i < maxX - offset; i++) {
-    for (let j = offset; j < maxY - offset; j++) {
-      //If the point is not walkable skip it
-      if (mapData[j][i] == 0) continue;
-
-      //Calculate the distance from the agent and if it is less than the observation distance skip it (i'm seeing it)
-      var distance = Math.abs(agentPosition.x - j) + Math.abs(agentPosition.y - i);
-      if (distance < offset) continue;
-
-      weight = distance / 5;
-      //Push the coordinates in the array with a number of repetitions based on the weight
-      for (let k = 0; k < weight; k++) {
-        distances.push({ x: j, y: i, score: Number.MIN_VALUE });
-      }
-    }
-  }
-
-  //If there are no points in the distances array return a random walkable point (for example if the agent is seeing all the map)
-  //CAN LOOP FIX
-  if (distances.length == 0) {
-    var targetX = 0;
-    var targetY = 0;
-    do {
-      targetX = Math.floor(Math.random() * maxX);
-      targetY = Math.floor(Math.random() * maxY);
-    } while (mapData[targetX][targetY] == 0);
-
-    return { x: targetX, y: targetY, score: Number.MIN_VALUE };
-  }
-
-  //Sort the coordinates randomly and return a random one
-  distances.sort(() => Math.random() - 0.5);
-  return distances[Math.floor(Math.random() * distances.length)];
-}
 
 //Calculate an ideal score based on the beliefs of the agent to select the best option
 function averageScore(args, desire, actualScore, parcelsToDeliver) {
@@ -225,9 +120,154 @@ function averageScore(args, desire, actualScore, parcelsToDeliver) {
     //If the parcel decaying time is not infinite, the score to deliver the parcels is the actual score plus the actual score divided by 5
     //minus the number of parcels to deliver multiplied by the time required to make a move times the distance from the delivery point 
     //divided by the parcel dacaying time
-    const BONUS = actualScore / 5;
+    const BONUS = actualScore / 4;
     return ((actualScore + BONUS) - (parcelsToDeliver * (config.get("moveDur") * distance) / config.get("parDecInt")));
   }
+}
+
+//----------BELIEF REVISION----------
+
+//Me listener to get the agent id and position
+var friendID = "";
+const me = {};
+client.onYou(({ id, x, y }) => {
+  me.id = id;
+  if (friendID == "") {
+    console.log("I don't have the friend ID yet");
+    client.shout("i$" + me.id)
+  }
+  me.x = Math.round(x);
+  me.y = Math.round(y);
+});
+
+//Parcel listener to get the parcels position
+var parcels = new Map();
+client.onParcelsSensing(async (perceived_parcels) => {
+  parcels = new Map();
+  for (const p of perceived_parcels) {
+    if ((!p.carriedBy || p.carriedBy == me.id) && !blackListedParcels.has(p.id)) { //&& !blackListedParcels.has(p.id)
+      p.x = Math.round(p.x);
+      p.y = Math.round(p.y);
+      parcels.set(p.id, p);
+    }
+  }
+});
+
+//Agents listener to get the other agents position
+var agents = new Map();
+client.onAgentsSensing(async (perceived_agents) => {
+  agents = new Map();
+  for (const a of perceived_agents) {
+    a.x = Math.round(a.x);
+    a.y = Math.round(a.y);
+    agents.set(a.id, a);
+  }
+});
+
+//Message of the type: i#myID_targetX_targetY_Score
+function messageParser(m) {
+  if (m.split("$")[0] == "i") {
+    if (friendID == "") {
+      client.shout("i$" + me.id)
+    }
+    friendID = m.split("$")[1]
+    console.log("Friend ID: " + friendID)
+    return null
+
+  } else if (m.split("$")[0] == "e") {
+    var info = m.split("$")[1];
+    var infoValues = info.split("_");
+    if (infoValues[0] == friendID) {
+      var x = infoValues[1];
+      var y = infoValues[2];
+      var friendScore = infoValues[3];
+      var parcelId = infoValues[4];
+
+      if (myAgent.getCurrentDesire() == GO_PICK_UP) {
+        var currentIntentionArgs = myAgent.getCurrentArgs();
+        if (currentIntentionArgs.x == x && currentIntentionArgs.y == y) {
+          var actualScore = 0;
+          var parcelsToDeliver = 0;
+          for (const parcel of parcels.values()) {
+            if (parcel.carriedBy == me.id) {
+              actualScore += parcel.reward;
+              parcelsToDeliver++;
+            }
+          }
+
+          var myScore = averageScore(currentIntentionArgs, myAgent.getCurrentDesire(), actualScore, parcelsToDeliver);
+          console.log("My score: " + myScore);
+          return "" + myScore;
+        }
+      }
+    }
+    return "" + Number.MIN_VALUE;
+  } else if (m.split("$")[0] == "s") {
+    console.log("I'm stopping since the other agent told me so");
+    blackListedParcels.add(parcelId);
+    myAgent.stop();
+    return null
+  }
+}
+
+client.onMsg(async (id, name, message, reply) => {
+  console.log("Message received: " + id + message  + name);
+  if (message.split("$")[0] == "i" || id == friendID) {
+    const response = messageParser(message);
+    const rep = reply ? "yes" : "no";
+    console.log("Reply: " + rep);
+    if (reply) try { 
+      console.log("Received reply: " + response);
+      console.log
+      reply(response) 
+    } catch { (error) => console.error(error) }
+  }
+});
+
+//----------END OF BELIEF REVISION----------
+
+//Generate and return random coordinates with higher probability for further positions
+function weightedBlindMove(agentPosition) {
+  //Create an offset to avoid cells in the FOV of the agent
+  const offset = Math.ceil(config.get("parObsDist") / 2);
+
+  //Varaible weight to give a higher probability to further positions
+  var weight;
+
+  //Calculate the distances from the agent to each coordinate
+  const distances = [];
+  for (let i = offset; i < maxX - offset; i++) {
+    for (let j = offset; j < maxY - offset; j++) {
+      //If the point is not walkable skip it
+      if (!blindMovePoints.has("" + i + "_" + j)) continue;
+
+      //Calculate the distance from the agent and if it is less than the observation distance skip it (i'm seeing it)
+      var distance = Math.abs(agentPosition.x - i) + Math.abs(agentPosition.y - j);
+      if (distance < offset) continue;
+
+      weight = distance / 5;
+      //Push the coordinates in the array with a number of repetitions based on the weight
+      for (let k = 0; k < weight; k++) {
+        distances.push({ x: i, y: j, score: Number.MIN_VALUE });
+      }
+    }
+  }
+
+  //If there are no points in the distances array return a random walkable point (for example if the agent is seeing all the map)
+  if (distances.length == 0) {
+    var targetX = 0;
+    var targetY = 0;
+    do {
+      targetX = Math.floor(Math.random() * maxX);
+      targetY = Math.floor(Math.random() * maxY);
+    } while (mapData[targetX][targetY] == 0 || !blindMovePoints.has("" + targetX + "_" + targetY));
+
+    return { x: targetX, y: targetY, score: Number.MIN_VALUE };
+  }
+
+  //Sort the coordinates randomly and return a random one
+  distances.sort(() => Math.random() - 0.5);
+  return distances[Math.floor(Math.random() * distances.length)];
 }
 
 //Check the environment to search for the best possible action to take
@@ -305,6 +345,8 @@ async function checkOptions() {
     }
   }
 
+  await myAgent.intentionCoordination();
+
   //The best option is added to the intention queue
   myAgent.queue(best_option.desire, best_option.args);
 }
@@ -346,6 +388,49 @@ class Agent {
   getCurrentDesire() {
     if (this.current_intention) return this.current_intention.getDesire();
     else return null;
+  }
+
+  getCurrentArgs() {
+    if (this.current_intention) return this.current_intention.getArgs();
+    else return null;
+  }
+
+  async intentionCoordination() {
+    if (friendID == "") return false;
+    if (!this.current_intention) return false;
+    if (this.current_intention.getDesire() != GO_PICK_UP) return false;
+    if(blackListedParcels.has(this.current_intention.getArgs().id)) return false;
+    if(whiteListedParcels.has(this.current_intention.getArgs().id)) return false;
+
+    var actualScore = 0;
+    var parcelsToDeliver = 0;
+    for (const parcel of parcels.values()) {
+      if (parcel.carriedBy == me.id) {
+        actualScore += parcel.reward;
+        parcelsToDeliver++;
+      }
+    }
+
+    var possibleScore = averageScore(this.current_intention.getArgs(), this.current_intention.getDesire(), actualScore, parcelsToDeliver);
+
+    const message = "e$" + me.id + "_" + this.current_intention.getArgs().x + "_" + this.current_intention.getArgs().y + "_" + possibleScore + "_" + this.current_intention.getArgs().id;
+    const parID = this.current_intention.getArgs().id
+        var response = await client.ask(friendID, message);
+    console.log(response)
+    if (Number(response) < possibleScore) {
+      if(Number(response) != Number.MIN_VALUE){
+        console.log("I tell my friend to stop");
+        await client.say(friendID, "s$");
+        whiteListedParcels.add(parID);
+      }
+      
+    } else {
+      console.log("My friend has a higher score, so I will stop");
+      console.log("My score: " + possibleScore + " Friend score: " + response);
+      blackListedParcels.add(parID);
+      this.current_intention.stop();
+      this.stop();
+    }
   }
 
   //Intention revision
@@ -402,85 +487,6 @@ class Agent {
     return false;
   }
 
-  // async intentionRevision() {
-  //   if (this.intention_queue.length == 0 && supportMemory.size == 0) {
-  //     return;
-  //   }
-  //   //Calculate the actual score and the parcels to deliver
-  //   var actualScore = 0;
-  //   var parcelsToDeliver = 0;
-  //   for (const parcel of parcels.values()) {
-  //     if (parcel.carriedBy == me.id) {
-  //       actualScore += parcel.reward;
-  //       parcelsToDeliver++;
-  //     }
-  //   }
-
-  //   //Best option already in queue
-  //   var best_option_queue = { desire: null, args: null };
-  //   var best_score_queue = Number.MIN_VALUE;
-
-  //   for (var i = 0; i < this.intention_queue.length; i++) {
-  //     // const key = this.#desire + "_" + me.x + "_" + me.y + "_" + args.x + "_" + args.y;
-  //     console.log(this.intention_queue.length)
-  //     if (this.intention_queue[i].getDesire() != GO_PUT_DOWN) {
-  //       const failed_key = this.intention_queue[i].getDesire() + "_" + me.x + "_" + me.x + "_" + this.intention_queue[i].getArgs().x + "_" + this.intention_queue[i].getArgs().y;
-  //       if (old_failed_plans[failed_key]){
-  //         this.intention_queue.splice(i, 1);
-  //         continue;
-  //       }
-  //     }
-  //     if (this.intention_queue[i].getArgs().time > performance.now()) {
-  //       this.intention_queue.splice(i, 1);
-  //     } else {
-  //       var current_score = averageScore(this.intention_queue[i].getArgs(), this.intention_queue[i].getDesire(), actualScore, parcelsToDeliver);
-
-  //       if (current_score > best_score_queue) {
-  //         best_option_queue = i;
-  //         best_score_queue = current_score;
-  //       }
-  //     }
-  //   }
-
-  //   //Best option in memory
-  //   var best_option_memory = { desire: null, args: null };
-  //   var best_score_memory = Number.MIN_VALUE;
-  //   var best_key_memory = null;
-
-  //   for (const [key, value] of supportMemory) {
-  //     //console.log(key, value.time);
-  //     if (value.time < performance.now()) {
-  //       var current_score = averageScore(value.args, value.desire, actualScore, parcelsToDeliver);
-  //       supportMemory[key].args.score = current_score;
-
-  //       if (current_score > best_score_memory) {
-  //         best_option_memory = { desire: value.desire, args: value.args }
-  //         best_score_memory = current_score;
-  //         best_key_memory = key;
-  //       }
-  //     } else {
-  //       supportMemory.delete(key);
-  //     }
-  //   }
-
-  //   // if (best_option_memory.desire == null && best_option_queue.desire == null) {
-  //   //   const best_option_blind = { desire: BLIND_MOVE, args: weightedBlindMove({ x: me.x, y: me.y }) };
-  //   //   const intention = new Intention(best_option_blind.desire, best_option_blind.args);
-  //   //   this.intention_queue.unshift(intention);
-  //   // } else
-  //   if (best_score_memory > best_score_queue) {
-  //     //if memory wins create new intention and push to queue
-  //     supportMemory.delete(best_key_memory);
-  //     const intention = new Intention(best_option_memory.desire, best_option_memory.args);
-  //     this.intention_queue.unshift(intention);
-  //   } else {
-  //     // move the element to index best_option_queue to the top of the queue
-  //     const intention = this.intention_queue[best_option_queue];
-  //     this.intention_queue.splice(best_option_queue, 1);
-  //     this.intention_queue.unshift(intention);
-  //   }
-  // }
-
   //Revise the intentions to see if the best option is better than the current intention
   async intentionReplace(desire, args) {
     //If the agent is performing a blind move and the new intention is to pick up or put down a parcel we stop the blind move
@@ -497,31 +503,6 @@ class Agent {
 
   //Insert the new intention in the queue after some checks
   async queue(desire, args) {
-    // if (this.current_intention.getDesire() != desire || (this.current_intention.getDesire() == desire && desire == GO_PICK_UP && this.current_intention.getArgs().id != args.id)) {
-    //   if (this.intention_queue.length == 0) {
-    //     console.log("Adding new intention to empty queue: " + desire);
-    //     const current = new Intention(desire, args);
-    //     this.intention_queue.push(current);
-    //   } else if (desire == GO_PICK_UP) {
-    //     if (!this.intention_queue.some(obj => obj.getDesire() == desire && obj.getArgs().id == args.id)) {
-    //       console.log("Adding new pickup intention to queue");
-    //       const current = new Intention(desire, args);
-    //       this.intention_queue.push(current);
-    //     }
-    //   } else if (desire == GO_PUT_DOWN) {
-    //     if (this.intention_queue.some(obj => obj.getDesire() == desire)) {
-    //       console.log("Updating old putdow intention");
-    //       this.intention_queue.splice(this.intention_queue.indexOf(this.intention_queue.findIndex(obj => obj.getDesire() == desire)), 1);
-    //       const current = new Intention(desire, args);
-    //       this.intention_queue.push(current);
-    //     } else {
-    //       console.log("Adding new putdown intention to queue");
-    //       const current = new Intention(desire, args);
-    //       this.intention_queue.push(current);
-    //     }
-    //   }
-    // }
-
     //If the intention is different from the actual one or if it is the same but referring to other objects we add it to the queue
     if (this.current_intention.getDesire() != desire || this.current_intention.getArgs().id != args.id) {
       //If the queue is empty we add the intention
@@ -640,6 +621,11 @@ class Intention extends Promise {
         } catch (e) {
           //If the plan fails we stop the intention and add the plan to the failed plans
           console.log("plan: " + this.getDesire() + " -- failed while trying to achieve");
+          if (this.#desire == BLIND_MOVE) {
+            // remove the goal from the set of blindMovePoints
+            blindMovePoints.delete(""+this.#args.x+"_"+this.#args.y);
+            console.log(blindMovePoints.size)
+          }
           if (this.#desire != GO_PUT_DOWN) {
             const key = this.#desire + "_" + me.x + "_" + me.y + "_" + this.#args.x + "_" + this.#args.y;
             if (!old_failed_plans[key]) old_failed_plans[key] = this.#current_plan

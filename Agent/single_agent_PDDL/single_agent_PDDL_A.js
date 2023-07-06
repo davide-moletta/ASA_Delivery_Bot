@@ -8,17 +8,12 @@ const client = new DeliverooApi(
 );
 
 //TODO
-// - messages
 // - update weights for not infinite environments
 
 //EXTRA
 // - update weights dynamically
 // - insert intention revision on queue
 // - modify the queue function
-
-//FIX 
-// - possible loop in weighted blind move
-// - use the clock to check options
 
 //Possible desires of our agent
 const GO_PUT_DOWN = "go_put_down";
