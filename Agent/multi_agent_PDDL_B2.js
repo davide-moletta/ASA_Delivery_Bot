@@ -48,8 +48,6 @@ client.onMap((width, height, tiles) => {
   mapParser(mapData);
 });
 
-
-
 //Get the configuration from the server to get values used to perform score evaluation
 const config = new Map();
 client.onConfig((conf) => {

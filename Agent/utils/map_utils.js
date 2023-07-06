@@ -139,6 +139,3 @@ export { divideMatrix, getNeighbors };
 // const mapData = new Array(sizeX).fill(99).map(() => new Array(sizeY).fill(99));
 // const [center_spots, slices_res] = divideMatrix(mapData, agents_num, extended, verbose);
 // console.log(center_spots);
-
-
-

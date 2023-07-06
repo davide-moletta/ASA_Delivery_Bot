@@ -234,7 +234,7 @@ function weightedBlindMove(agentPosition) {
       var distance = Math.abs(agentPosition.x - i) + Math.abs(agentPosition.y - j);
       if (distance < offset) continue;
 
-      weight = distance / 5;
+      weight = distance / 4;
       //Push the coordinates in the array with a number of repetitions based on the weight
       for (let k = 0; k < weight; k++) {
         distances.push({ x: i, y: j, score: Number.MIN_VALUE });
@@ -473,85 +473,6 @@ class Agent {
     return false;
   }
 
-  // async intentionRevision() {
-  //   if (this.intention_queue.length == 0 && supportMemory.size == 0) {
-  //     return;
-  //   }
-  //   //Calculate the actual score and the parcels to deliver
-  //   var actualScore = 0;
-  //   var parcelsToDeliver = 0;
-  //   for (const parcel of parcels.values()) {
-  //     if (parcel.carriedBy == me.id) {
-  //       actualScore += parcel.reward;
-  //       parcelsToDeliver++;
-  //     }
-  //   }
-
-  //   //Best option already in queue
-  //   var best_option_queue = { desire: null, args: null };
-  //   var best_score_queue = Number.MIN_VALUE;
-
-  //   for (var i = 0; i < this.intention_queue.length; i++) {
-  //     // const key = this.#desire + "_" + me.x + "_" + me.y + "_" + args.x + "_" + args.y;
-  //     console.log(this.intention_queue.length)
-  //     if (this.intention_queue[i].getDesire() != GO_PUT_DOWN) {
-  //       const failed_key = this.intention_queue[i].getDesire() + "_" + me.x + "_" + me.x + "_" + this.intention_queue[i].getArgs().x + "_" + this.intention_queue[i].getArgs().y;
-  //       if (old_failed_plans[failed_key]){
-  //         this.intention_queue.splice(i, 1);
-  //         continue;
-  //       }
-  //     }
-  //     if (this.intention_queue[i].getArgs().time > performance.now()) {
-  //       this.intention_queue.splice(i, 1);
-  //     } else {
-  //       var current_score = averageScore(this.intention_queue[i].getArgs(), this.intention_queue[i].getDesire(), actualScore, parcelsToDeliver);
-
-  //       if (current_score > best_score_queue) {
-  //         best_option_queue = i;
-  //         best_score_queue = current_score;
-  //       }
-  //     }
-  //   }
-
-  //   //Best option in memory
-  //   var best_option_memory = { desire: null, args: null };
-  //   var best_score_memory = Number.MIN_VALUE;
-  //   var best_key_memory = null;
-
-  //   for (const [key, value] of supportMemory) {
-  //     //console.log(key, value.time);
-  //     if (value.time < performance.now()) {
-  //       var current_score = averageScore(value.args, value.desire, actualScore, parcelsToDeliver);
-  //       supportMemory[key].args.score = current_score;
-
-  //       if (current_score > best_score_memory) {
-  //         best_option_memory = { desire: value.desire, args: value.args }
-  //         best_score_memory = current_score;
-  //         best_key_memory = key;
-  //       }
-  //     } else {
-  //       supportMemory.delete(key);
-  //     }
-  //   }
-
-  //   // if (best_option_memory.desire == null && best_option_queue.desire == null) {
-  //   //   const best_option_blind = { desire: BLIND_MOVE, args: weightedBlindMove({ x: me.x, y: me.y }) };
-  //   //   const intention = new Intention(best_option_blind.desire, best_option_blind.args);
-  //   //   this.intention_queue.unshift(intention);
-  //   // } else
-  //   if (best_score_memory > best_score_queue) {
-  //     //if memory wins create new intention and push to queue
-  //     supportMemory.delete(best_key_memory);
-  //     const intention = new Intention(best_option_memory.desire, best_option_memory.args);
-  //     this.intention_queue.unshift(intention);
-  //   } else {
-  //     // move the element to index best_option_queue to the top of the queue
-  //     const intention = this.intention_queue[best_option_queue];
-  //     this.intention_queue.splice(best_option_queue, 1);
-  //     this.intention_queue.unshift(intention);
-  //   }
-  // }
-
   //Revise the intentions to see if the best option is better than the current intention
   async intentionReplace(desire, args) {
     //If the agent is performing a blind move and the new intention is to pick up or put down a parcel we stop the blind move
@@ -568,31 +489,6 @@ class Agent {
 
   //Insert the new intention in the queue after some checks
   async queue(desire, args) {
-    // if (this.current_intention.getDesire() != desire || (this.current_intention.getDesire() == desire && desire == GO_PICK_UP && this.current_intention.getArgs().id != args.id)) {
-    //   if (this.intention_queue.length == 0) {
-    //     console.log("Adding new intention to empty queue: " + desire);
-    //     const current = new Intention(desire, args);
-    //     this.intention_queue.push(current);
-    //   } else if (desire == GO_PICK_UP) {
-    //     if (!this.intention_queue.some(obj => obj.getDesire() == desire && obj.getArgs().id == args.id)) {
-    //       console.log("Adding new pickup intention to queue");
-    //       const current = new Intention(desire, args);
-    //       this.intention_queue.push(current);
-    //     }
-    //   } else if (desire == GO_PUT_DOWN) {
-    //     if (this.intention_queue.some(obj => obj.getDesire() == desire)) {
-    //       console.log("Updating old putdow intention");
-    //       this.intention_queue.splice(this.intention_queue.indexOf(this.intention_queue.findIndex(obj => obj.getDesire() == desire)), 1);
-    //       const current = new Intention(desire, args);
-    //       this.intention_queue.push(current);
-    //     } else {
-    //       console.log("Adding new putdown intention to queue");
-    //       const current = new Intention(desire, args);
-    //       this.intention_queue.push(current);
-    //     }
-    //   }
-    // }
-
     //If the intention is different from the actual one or if it is the same but referring to other objects we add it to the queue
     if (this.current_intention.getDesire() != desire || this.current_intention.getArgs().id != args.id) {
       //If the queue is empty we add the intention
