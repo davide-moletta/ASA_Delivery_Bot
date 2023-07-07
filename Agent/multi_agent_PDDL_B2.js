@@ -1,6 +1,6 @@
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
-import { planner, goalParser, mapParser, readDomain } from "../utils/PDDL_planner.js";
-import { findDeliveryPoint } from "../utils/astar_utils.js";
+import { planner, goalParser, mapParser, readDomain } from "./PDDL_planner.js";
+import { findDeliveryPoint } from "./astar_utils.js";
 
 const client = new DeliverooApi(
   "http://localhost:8080/?name=B",
@@ -131,7 +131,7 @@ var parcels = new Map();
 client.onParcelsSensing(async (perceived_parcels) => {
   parcels = new Map();
   for (const p of perceived_parcels) {
-    if ((!p.carriedBy || p.carriedBy == me.id) && !blackListedParcels.has(p.id)) { //If the parcel is not carried by another agent and is not blacklisted
+    if ((!p.carriedBy || p.carriedBy == me.id) && !blackListedParcels.has(""+p.id)) { //If the parcel is not carried by another agent and is not blacklisted
       p.x = Math.round(p.x);
       p.y = Math.round(p.y);
       parcels.set(p.id, p);
@@ -196,14 +196,13 @@ function messageParser(m) {
   } else if (m.split("$")[0] == "s") {
     //If the message is of type s i save the parcel id in the black list and stop my intention since i lost
     console.log("I'm stopping since the other agent told me so");
-    blackListedParcels.add(parcelId);
+    if(!whiteListedParcels.has(""+parcelId)) blackListedParcels.add(""+parcelId);
     myAgent.stop();
     return;
   }
 }
 
 client.onMsg(async (id, name, message, reply) => {
-  console.log("Message received: " + id + message + name);
   if (message.split("$")[0] == "i" || id == friendID) {
     const response = messageParser(message);
     //If the other agent asked me something i reply with the score
@@ -390,8 +389,9 @@ class Agent {
     if (friendID == "") return false;
     if (!this.current_intention) return false;
     if (this.current_intention.getDesire() != GO_PICK_UP) return false;
-    if (blackListedParcels.has(this.current_intention.getArgs().id)) return false;
-    if (whiteListedParcels.has(this.current_intention.getArgs().id)) return false;
+    const parID = this.current_intention.getArgs().id;
+    if (blackListedParcels.has(""+parID)) return false;
+    if (whiteListedParcels.has(""+parID)) return false;
 
     //Calculate the score of the current intention
     var actualScore = 0;
@@ -406,7 +406,6 @@ class Agent {
 
     //Builds the message for the other agent
     const message = "e$" + me.id + "_" + this.current_intention.getArgs().x + "_" + this.current_intention.getArgs().y + "_" + possibleScore + "_" + this.current_intention.getArgs().id;
-    const parID = this.current_intention.getArgs().id
 
     //Ask the other agent if it has a higher score and wait for response
     var response = await client.ask(friendID, message);
@@ -417,12 +416,12 @@ class Agent {
       if (Number(response) != Number.MIN_VALUE) {
         console.log("I tell my friend to stop");
         await client.say(friendID, "s$");
-        whiteListedParcels.add(parID);
       }
+      if(!blackListedParcels.has(""+parID)) whiteListedParcels.add(""+parID);
     } else {
       //If the other agent's score is higher, I stop and add the parcel to the blacklist
       console.log("My friend has a higher score, so I will stop");
-      blackListedParcels.add(parID);
+      if(!whiteListedParcels.has(""+parID)) blackListedParcels.add(""+parID);
       this.current_intention.stop();
       this.stop();
     }
@@ -451,6 +450,8 @@ class Agent {
 
     for (const [key, value] of supportMemory) {
       //If the time of the option is greater than the current time it is still valid
+      const parID = value.args.id;
+      if (blackListedParcels.has(""+parID) && value.desire == GO_PICK_UP) continue;
       if (value.time > performance.now()) {
         //Calculate score of the option
         var current_score = averageScore(value.args, value.desire, actualScore, parcelsToDeliver);
@@ -625,6 +626,10 @@ class Intention extends Promise {
           if (this.#desire != GO_PUT_DOWN) {
             const key = this.#desire + "_" + me.x + "_" + me.y + "_" + this.#args.x + "_" + this.#args.y;
             if (!old_failed_plans[key]) old_failed_plans[key] = this.#current_plan
+            if(this.#desire == GO_PICK_UP){
+              console.log("Adding parcel to black list: " + this.#args.id);
+              blackListedParcels.add(""+this.#args.id);
+            } 
           }
           myAgent.resetCurrentIntention();
           this.#current_plan.stop();

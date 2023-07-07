@@ -19,6 +19,7 @@ let maxX = 0;
 let maxY = 0;
 var mapData;
 const delivery_points = [];
+const blackListedParcels = new Set();
 const blindMovePoints = new Set();
 
 //Memory of the agent about intentions and plans
@@ -125,7 +126,7 @@ client.onParcelsSensing(async (perceived_parcels) => {
   const parcelsToSend = []
   //For each parcel sensed by this agent check if it is in its slice
   for (const p of perceived_parcels) {
-    if (!p.carriedBy || p.carriedBy == me.id) {
+    if (!p.carriedBy || p.carriedBy == me.id && !blackListedParcels.has(p.id)) {
       p.x = Math.round(p.x);
       p.y = Math.round(p.y);
 
@@ -134,6 +135,7 @@ client.onParcelsSensing(async (perceived_parcels) => {
       else if (!p.carriedBy) {
         //Otherwise send message to the other agent about it
         parcelsToSend.push(p);
+        blackListedParcels.add(p.id);
       }
     }
   }
@@ -428,6 +430,8 @@ class Agent {
 
     for (const [key, value] of supportMemory) {
       //If the time of the option is greater than the current time it is still valid
+      const parID = value.args.id;
+      if (blackListedParcels.has(""+parID) && value.desire == GO_PICK_UP) continue;
       if (value.time > performance.now()) {
         //Calculate score of the option
         var current_score = averageScore(value.args, value.desire, actualScore, parcelsToDeliver);
@@ -583,6 +587,12 @@ class Intention extends Promise {
         this.#current_plan = plan;
         console.log("achieving desire: " + this.getDesire());
         try {
+          const key = this.#desire + "_" + me.x + "_" + me.y + "_" + this.#args.x + "_" + this.#args.y;
+          if (old_failed_plans[key]) {
+            this.#current_plan.stop();
+            this.#stopped = true;
+          }
+          
           const plan_res = await plan.execute(this.#desire, this.#args);
           this.#resolve(plan_res);
 
@@ -602,6 +612,7 @@ class Intention extends Promise {
           if (this.#desire != GO_PUT_DOWN) {
             const key = this.#desire + "_" + me.x + "_" + me.y + "_" + this.#args.x + "_" + this.#args.y;
             if (!old_failed_plans[key]) old_failed_plans[key] = this.#current_plan
+            if(this.#desire == GO_PICK_UP) blackListedParcels.add(this.#args.id);
           }
           myAgent.resetCurrentIntention();
           this.#current_plan.stop();
