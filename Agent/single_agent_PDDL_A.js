@@ -114,16 +114,16 @@ function weightedBlindMove(agentPosition) {
   for (let i = offset; i < maxX - offset; i++) {
     for (let j = offset; j < maxY - offset; j++) {
       //If the point is not walkable skip it
-      if (mapData[j][i] == 0) continue;
+      if (mapData[i][j] == 0) continue;
 
       //Calculate the distance from the agent and if it is less than the observation distance skip it (i'm seeing it)
-      var distance = Math.abs(agentPosition.x - j) + Math.abs(agentPosition.y - i);
+      var distance = Math.abs(agentPosition.x - i) + Math.abs(agentPosition.y - j);
       if (distance < offset) continue;
 
       weight = distance / 5;
       //Push the coordinates in the array with a number of repetitions based on the weight
       for (let k = 0; k < weight; k++) {
-        distances.push({ x: j, y: i, score: Number.MIN_VALUE });
+        distances.push({ x: i, y: j, score: Number.MIN_VALUE });
       }
     }
   }
