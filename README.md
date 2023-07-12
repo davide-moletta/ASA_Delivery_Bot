@@ -11,6 +11,7 @@ We explored three main approaches: single-agent, multi-agent with a sliced map a
 Finally, we made several tests, analyzed results and performances (using the provided challenges), compared the different approaches, and examined possible future implementations.
 
 ## Repository content
+
 ```
 project
 │   README.md
@@ -26,5 +27,6 @@ project
 |     └─── Multi Agent PDDL B2 & C2: medium multi agent implementation
 │       
 └───CustomServer: edit of the DefaultServer to test our code in a controlled environment
-
+│       
+└───DefaultServer: server code for the challenges
 ```
